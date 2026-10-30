@@ -18,6 +18,8 @@ def classify_pr(files: Sequence[str], additions: int, deletions: int) -> PrClass
 
     docs = tests = source = 0
     for path in files:
+        if type(path) is not str:
+            return "other"
         parts = path.split("/")
         if (
             not path
@@ -27,11 +29,12 @@ def classify_pr(files: Sequence[str], additions: int, deletions: int) -> PrClass
             or ".." in parts
             or any(part.casefold() in GUARDED_PREFIXES for part in parts)
             or parts[-1].casefold() in GUARDED_FILES
+            or parts[-1].casefold().startswith("license.")
         ):
             return "other"
 
         is_doc = path.endswith(".md") or path.startswith("docs/")
-        is_test = (
+        is_test = not is_doc and (
             path.startswith(("tests/", "Tests/"))
             or parts[-1].startswith("test_")
             or parts[-1].endswith(("_test.py", "Tests.swift"))

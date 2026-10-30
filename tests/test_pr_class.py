@@ -10,6 +10,8 @@ import pytest
     ["docs/"],
     ["tests/README.md"],
     ["docs/githooks-guide.md"],
+    ["docs/licensing.md"],
+    ["licensed.md"],
 ])
 def test_docs(files):
     from shuin.pr_class import classify_pr
@@ -47,6 +49,8 @@ def test_small_fix(files, additions, deletions):
     (["shuin/cli.py", "tests/test_cli.py", "a.py", "b.py", "c.py", "d.py"], 30, 5),
     (["README.md", "shuin/cli.py"], 30, 5),
     (["README.md", "tests/test_cli.py"], 30, 5),
+    (["tests/README.md", "shuin/cli.py"], 10, 1),
+    (["docs/test_x.py", "shuin/cli.py"], 10, 1),
     (["shuin/cli.py"], 1, 0),
     ([], 0, 0),
 ])
@@ -74,6 +78,10 @@ def test_other(files, additions, deletions):
     "install.sh",
     "SECURITY.md",
     "LICENSE",
+    "LICENSE.md",
+    "docs/LICENSE.md",
+    "License.md",
+    "LICENSE.txt",
     "pyproject.toml",
     "docs/AGENTS.md",
     "packages/x/CLAUDE.md",
@@ -116,6 +124,14 @@ def test_invalid_paths(path):
 
     assert classify_pr([path], 1, 0) == "other"
     assert classify_pr([path, "tests/test_x.py"], 1, 0) == "other"
+
+
+@pytest.mark.parametrize("path", [None, 5, b"README.md", ["README.md"]])
+@pytest.mark.parametrize("files", [[], ["tests/test_x.py"]])
+def test_non_string_paths(path, files):
+    from shuin.pr_class import classify_pr
+
+    assert classify_pr([path, *files], 1, 0) == "other"
 
 
 @pytest.mark.parametrize("count", [-1, None, "5", 1.5, True, False])
