@@ -1,0 +1,12 @@
+diff --git a/AppDatabase.swift b/AppDatabase.swift
+index 1111111..3333333 100644
+--- a/AppDatabase.swift
++++ b/AppDatabase.swift
+@@ -3,4 +3,7 @@ func migrate() {
+     migrator.registerMigration("v6") { db in
+         try db.execute(sql: "SELECT 1")
+     }
++    migrator.registerMigration('v7') { db in
++        try db.execute(sql: "ALTER TABLE item ADD COLUMN tint TEXT")
++    }
+ }

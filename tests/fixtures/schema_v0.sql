@@ -1,0 +1,220 @@
+-- Shuin ledger schema. Weekend MVP.
+-- GitHub stays the source of truth. These rows store ids and cached fields.
+-- Free text lives only in updates, tried_failed, result_note, and task_runs.summary.
+-- Confirmed facts are cached PR columns plus ledger checks (stale evidence, queue, overlap).
+
+CREATE TABLE schema_migrations(
+  version INTEGER PRIMARY KEY,
+  applied_at INTEGER NOT NULL
+);
+
+CREATE TABLE agents(
+  id TEXT PRIMARY KEY,
+  kind TEXT NOT NULL CHECK(kind IN('cursor','claude_code','codex','hermes','lead','verifier','human')),
+  role TEXT NOT NULL CHECK(role IN('owner','lead','worker','verifier','system')),
+  token_hash TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  disabled_at INTEGER
+);
+CREATE UNIQUE INDEX agents_token ON agents(token_hash);
+
+CREATE TABLE tasks(
+  id TEXT PRIMARY KEY,
+  title TEXT NOT NULL CHECK(length(title) BETWEEN 1 AND 200),
+  owner_agent TEXT REFERENCES agents(id),
+  status TEXT NOT NULL CHECK(status IN('todo','active','blocked','in_review','verifying','done','dropped')),
+  blocked_reason TEXT CHECK(blocked_reason IN('needs_human','needs_review','waiting_mac','waiting_dep','unclear_spec','other')),
+  depends_on TEXT REFERENCES tasks(id),
+  repo TEXT,
+  idempotency_key TEXT,
+  created_at INTEGER NOT NULL,
+  updated_at INTEGER NOT NULL
+);
+CREATE UNIQUE INDEX tasks_idem ON tasks(idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+CREATE TABLE prs(
+  id INTEGER PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  repo TEXT NOT NULL,
+  number INTEGER NOT NULL,
+  github_node_id TEXT,
+  branch TEXT,
+  base_branch TEXT,
+  head_sha TEXT,
+  state TEXT,
+  review_state TEXT,
+  ci_state TEXT,
+  files_json TEXT,
+  last_synced_at INTEGER,
+  UNIQUE(repo, number)
+);
+-- First PR bound to a card sticks. Stacked PRs are child tasks, not a second PR.
+CREATE UNIQUE INDEX prs_one_per_task ON prs(task_id);
+CREATE UNIQUE INDEX prs_node ON prs(github_node_id) WHERE github_node_id IS NOT NULL;
+
+CREATE TABLE updates(
+  id INTEGER PRIMARY KEY,
+  task_id TEXT REFERENCES tasks(id),
+  agent_id TEXT NOT NULL REFERENCES agents(id),
+  kind TEXT NOT NULL CHECK(kind IN('progress','question','handoff','note')),
+  body TEXT NOT NULL CHECK(length(body)<=2000),
+  label TEXT NOT NULL DEFAULT 'agent_claim' CHECK(label='agent_claim'),
+  on_behalf_of TEXT,
+  reported_via TEXT CHECK(reported_via IS NULL OR reported_via='lead'),
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE evidence(
+  id INTEGER PRIMARY KEY,
+  pr_id INTEGER NOT NULL REFERENCES prs(id),
+  agent_id TEXT NOT NULL REFERENCES agents(id),
+  kind TEXT NOT NULL CHECK(kind IN('screenshot','film','test_log','build_log')),
+  uri TEXT NOT NULL CHECK(length(uri) BETWEEN 1 AND 2000),
+  sha256 TEXT,
+  commit_sha TEXT NOT NULL,
+  result TEXT CHECK(result IN('pass','fail','info')),
+  on_behalf_of TEXT,
+  reported_via TEXT CHECK(reported_via IS NULL OR reported_via='lead'),
+  created_at INTEGER NOT NULL
+);
+-- stale = evidence.commit_sha != prs.head_sha (computed view)
+CREATE VIEW evidence_v AS
+  SELECT e.*, (e.commit_sha<>p.head_sha) AS stale
+  FROM evidence e JOIN prs p ON p.id=e.pr_id;
+
+CREATE TABLE verification_queue(
+  id INTEGER PRIMARY KEY,
+  pr_id INTEGER NOT NULL REFERENCES prs(id),
+  commit_sha TEXT NOT NULL,
+  requested_by TEXT NOT NULL REFERENCES agents(id),
+  state TEXT NOT NULL CHECK(state IN('queued','running','passed','failed','expired','cancelled','superseded')),
+  enqueued_at INTEGER NOT NULL,
+  claimed_by TEXT,
+  claimed_at INTEGER,
+  lease_expires_at INTEGER,
+  finished_at INTEGER,
+  result_note TEXT CHECK(result_note IS NULL OR length(result_note) BETWEEN 1 AND 300),
+  on_behalf_of TEXT,
+  reported_via TEXT CHECK(reported_via IS NULL OR reported_via='lead')
+);
+CREATE INDEX vq_fifo ON verification_queue(state, enqueued_at);
+
+CREATE TABLE tried_failed(
+  id INTEGER PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  pr_id INTEGER REFERENCES prs(id),
+  agent_id TEXT NOT NULL REFERENCES agents(id),
+  entry TEXT NOT NULL CHECK(length(trim(entry)) BETWEEN 1 AND 300 AND entry = trim(entry)),
+  on_behalf_of TEXT,
+  reported_via TEXT CHECK(reported_via IS NULL OR reported_via='lead'),
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE review_requests(
+  id INTEGER PRIMARY KEY,
+  pr_id INTEGER NOT NULL REFERENCES prs(id),
+  requested_by TEXT NOT NULL REFERENCES agents(id),
+  tried_failed_id INTEGER NOT NULL REFERENCES tried_failed(id),
+  state TEXT NOT NULL DEFAULT 'open',
+  on_behalf_of TEXT,
+  reported_via TEXT CHECK(reported_via IS NULL OR reported_via='lead'),
+  created_at INTEGER NOT NULL
+);
+
+-- One row per attempt. Summary holds the tried-and-failed line for that attempt.
+CREATE TABLE task_runs(
+  id INTEGER PRIMARY KEY,
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  agent_id TEXT NOT NULL REFERENCES agents(id),
+  attempt INTEGER NOT NULL,
+  status TEXT NOT NULL CHECK(status IN('started','review_requested','completed','failed','blocked')),
+  outcome TEXT CHECK(outcome IS NULL OR outcome IN('pass','fail','blocked','info')),
+  summary TEXT CHECK(summary IS NULL OR length(summary)<=300),
+  metadata_json TEXT,
+  error TEXT CHECK(error IS NULL OR length(error)<=300),
+  started_at INTEGER NOT NULL,
+  ended_at INTEGER,
+  UNIQUE(task_id, attempt)
+);
+
+-- Fail-closed PR acceptance receipt. Written in the same transaction as the decision.
+CREATE TABLE pr_acceptance(
+  id INTEGER PRIMARY KEY,
+  pr_id INTEGER NOT NULL REFERENCES prs(id),
+  task_id TEXT NOT NULL REFERENCES tasks(id),
+  head_sha TEXT,
+  head_sha_reread TEXT,
+  classification TEXT NOT NULL CHECK(classification IN('success','pending','failure','stale','missing','auth','infra')),
+  required_checks_json TEXT NOT NULL,
+  mac_state TEXT CHECK(mac_state IS NULL OR mac_state IN('pass','fail','missing')),
+  receipt_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE subscriptions(
+  id INTEGER PRIMARY KEY,
+  agent_id TEXT NOT NULL REFERENCES agents(id),
+  event_type TEXT NOT NULL CHECK(event_type IN('pr.updated','review.requested','verification.completed','agent.blocked','verification_slot.freed')),
+  filter_json TEXT,
+  channel_type TEXT NOT NULL CHECK(channel_type IN('webhook','cursor_followup','poll')),
+  channel_target TEXT,
+  secret TEXT,
+  active INTEGER NOT NULL DEFAULT 1,
+  expires_at INTEGER,
+  created_at INTEGER NOT NULL
+);
+
+-- events.id is the cursor (Hermes task_events shape). Payloads are ids and enums only.
+CREATE TABLE events(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  type TEXT NOT NULL,
+  task_id TEXT,
+  pr_id INTEGER,
+  queue_id INTEGER,
+  actor TEXT,
+  enum_state TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE TABLE deliveries(
+  id INTEGER PRIMARY KEY,
+  event_id INTEGER REFERENCES events(id),
+  subscription_id INTEGER REFERENCES subscriptions(id),
+  status TEXT NOT NULL CHECK(status IN('pending','sent','failed','dead')),
+  attempts INTEGER DEFAULT 0,
+  next_try_at INTEGER
+);
+
+-- Lead outbox. The lead relays these. Shuin does not call an external agent API.
+CREATE TABLE lead_outbox(
+  id INTEGER PRIMARY KEY,
+  delivery_id INTEGER NOT NULL UNIQUE REFERENCES deliveries(id),
+  event_id INTEGER NOT NULL,
+  target TEXT,
+  payload_json TEXT NOT NULL,
+  created_at INTEGER NOT NULL,
+  acked_at INTEGER
+);
+
+CREATE TABLE inbox_cursor(
+  agent_id TEXT PRIMARY KEY,
+  last_event_id INTEGER NOT NULL DEFAULT 0
+);
+
+CREATE TABLE gh_webhook_log(
+  delivery_id TEXT PRIMARY KEY,
+  event TEXT,
+  received_at INTEGER
+);
+
+CREATE TABLE metrics_daily(
+  day TEXT,
+  metric TEXT,
+  value INTEGER,
+  PRIMARY KEY(day, metric)
+);
+
+CREATE TABLE settings(
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);

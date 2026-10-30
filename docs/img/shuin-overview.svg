@@ -1,0 +1,82 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1500" height="830" viewBox="0 0 1500 830">
+<defs><radialGradient id="bg" cx="50%" cy="0%" r="110%"><stop offset="0" stop-color="#1d0f45"/><stop offset="0.6" stop-color="#0d0724"/><stop offset="1" stop-color="#080418"/></radialGradient><filter id="glow" x="-10%" y="-10%" width="120%" height="140%"><feGaussianBlur stdDeviation="5" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter><marker id="ah38e1ff" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 z" fill="#38e1ff"/></marker><marker id="ah9b6bff" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 z" fill="#9b6bff"/></marker><marker id="ahff2fa8" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M1 1 L9 5 L1 9 z" fill="#ff2fa8"/></marker></defs>
+<rect width="1500" height="830" fill="url(#bg)"/>
+<text x="48" y="72" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="42" font-weight="800" fill="#ffffff" text-anchor="start">How Shuin works</text>
+<rect x="48" y="88" width="64" height="4" rx="2" fill="#ff2fa8" fill-opacity="1" stroke="#ff2fa8" stroke-width="0"/>
+<text x="48" y="126" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="21" font-weight="400" fill="#c4b2e6" text-anchor="start">One SQLite file on your machine. GitHub stays the source of truth.</text>
+<text x="40" y="168" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#38e1ff" text-anchor="start" letter-spacing="2">AGENTS</text>
+<text x="370" y="168" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#38e1ff" text-anchor="start" letter-spacing="2">WAYS IN  ·  BEARER TOKEN</text>
+<text x="730" y="168" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#38e1ff" text-anchor="start" letter-spacing="2">LEDGER</text>
+<text x="1130" y="168" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="700" fill="#38e1ff" text-anchor="start" letter-spacing="2">GITHUB</text>
+<rect x="40" y="186" width="260" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#ff2fa8" stroke-width="2" filter="url(#glow)"/>
+<text x="62" y="228" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">Worker agents</text>
+<text x="62" y="264" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">cursor · claude_code</text>
+<text x="62" y="292" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">codex · hermes</text>
+<rect x="40" y="330" width="260" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#ff2fa8" stroke-width="2" filter="url(#glow)"/>
+<text x="62" y="372" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">Verifier</text>
+<text x="62" y="408" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">claims one queue slot</text>
+<text x="62" y="436" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">stamps a pass</text>
+<rect x="40" y="474" width="260" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#ff2fa8" stroke-width="2" filter="url(#glow)"/>
+<text x="62" y="516" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff" text-anchor="start">Lead · owner · human</text>
+<text x="62" y="552" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">reads claims as quoted</text>
+<text x="62" y="580" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">data, runs the gate</text>
+<rect x="370" y="186" width="290" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#38e1ff" stroke-width="2" filter="url(#glow)"/>
+<text x="392" y="228" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">CLI</text>
+<text x="392" y="264" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">shuin task add …</text>
+<text x="392" y="292" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">shuin pr link …</text>
+<rect x="370" y="330" width="290" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#38e1ff" stroke-width="2" filter="url(#glow)"/>
+<text x="392" y="372" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">HTTP API</text>
+<text x="392" y="408" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">127.0.0.1:8741  /v1/…</text>
+<text x="392" y="436" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">+ board at  GET /</text>
+<rect x="370" y="474" width="290" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#38e1ff" stroke-width="2" filter="url(#glow)"/>
+<text x="392" y="516" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">MCP server</text>
+<text x="392" y="552" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">shuin mcp  (stdio)</text>
+<text x="392" y="580" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">same code as the CLI</text>
+<path d="M300 248 L366 248" fill="none" stroke="#ff2fa8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ahff2fa8)"/>
+<path d="M660 248 L726 248" fill="none" stroke="#38e1ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah38e1ff)"/>
+<path d="M300 392 L366 392" fill="none" stroke="#ff2fa8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ahff2fa8)"/>
+<path d="M660 392 L726 392" fill="none" stroke="#38e1ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah38e1ff)"/>
+<path d="M300 536 L366 536" fill="none" stroke="#ff2fa8" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ahff2fa8)"/>
+<path d="M660 536 L726 536" fill="none" stroke="#38e1ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah38e1ff)"/>
+<rect x="730" y="186" width="330" height="412" rx="14" fill="#150b33" fill-opacity="1" stroke="#ff2fa8" stroke-width="2" filter="url(#glow)"/>
+<text x="752" y="228" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">Ledger</text>
+<text x="752" y="264" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#c4b2e6" text-anchor="start">tasks (cards)  T-0001</text>
+<text x="752" y="304" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#c4b2e6" text-anchor="start">agents + hashed tokens</text>
+<text x="752" y="344" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#c4b2e6" text-anchor="start">pull requests (GitHub cache)</text>
+<text x="752" y="384" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#c4b2e6" text-anchor="start">evidence, tied to a commit</text>
+<text x="752" y="424" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#c4b2e6" text-anchor="start">verification queue (FIFO)</text>
+<text x="752" y="464" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#c4b2e6" text-anchor="start">events + subscriptions</text>
+<text x="752" y="504" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="20" font-weight="400" fill="#c4b2e6" text-anchor="start">seal receipts</text>
+<rect x="1130" y="186" width="330" height="150" rx="14" fill="#150b33" fill-opacity="1" stroke="#38e1ff" stroke-width="2" filter="url(#glow)"/>
+<text x="1152" y="228" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">GitHub</text>
+<text x="1152" y="264" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">read through the gh CLI:</text>
+<text x="1152" y="292" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">PR head · review · CI state</text>
+<text x="1152" y="320" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">required checks per SHA</text>
+<path d="M1130 232 L1066 232" fill="none" stroke="#38e1ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah38e1ff)"/>
+<rect x="1073" y="207" width="50" height="25" rx="6" fill="#0b0620" fill-opacity="0.92"/>
+<text x="1098" y="224" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="500" fill="#38e1ff" text-anchor="middle">poll</text>
+<path d="M1066 300 L1130 300" fill="none" stroke="#38e1ff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="6 6" marker-end="url(#ah38e1ff)"/>
+<rect x="1073" y="275" width="50" height="25" rx="6" fill="#0b0620" fill-opacity="0.92"/>
+<text x="1098" y="292" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="15" font-weight="500" fill="#38e1ff" text-anchor="middle">seal</text>
+<text x="1130" y="372" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="400" fill="#c4b2e6" text-anchor="start">Shuin only reads PR state, and refuses</text>
+<text x="1130" y="398" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="17" font-weight="400" fill="#c4b2e6" text-anchor="start">to vouch for what it cannot confirm.</text>
+<rect x="370" y="666" width="330" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#9b6bff" stroke-width="2" filter="url(#glow)"/>
+<text x="392" y="708" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">Board</text>
+<text x="392" y="744" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">shuin render → board.html</text>
+<text x="392" y="772" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">board.json  ·  GET /</text>
+<rect x="730" y="666" width="330" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#9b6bff" stroke-width="2" filter="url(#glow)"/>
+<text x="752" y="708" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">Events</text>
+<text x="752" y="744" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">per-agent inbox + subscriptions</text>
+<text x="752" y="772" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">signed webhooks (deliver)</text>
+<rect x="1130" y="666" width="330" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#9b6bff" stroke-width="2" filter="url(#glow)"/>
+<text x="1152" y="708" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">Seal receipt</text>
+<text x="1152" y="744" font-family="'JetBrains Mono', SFMono-Regular, Menlo, Consolas, 'DejaVu Sans Mono', monospace" font-size="18" font-weight="400" fill="#7ff0ff" text-anchor="start">shuin seal  (fail-closed)</text>
+<text x="1152" y="772" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="19" font-weight="400" fill="#c4b2e6" text-anchor="start">stamped, stale or refused</text>
+<path d="M780 598 L780 632 L535 632 L535 662" fill="none" stroke="#9b6bff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah9b6bff)"/>
+<path d="M895 598 L895 662" fill="none" stroke="#9b6bff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah9b6bff)"/>
+<path d="M1010 598 L1010 632 L1295 632 L1295 662" fill="none" stroke="#9b6bff" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" marker-end="url(#ah9b6bff)"/>
+<rect x="40" y="666" width="300" height="124" rx="14" fill="#150b33" fill-opacity="1" stroke="#38e1ff" stroke-width="2" stroke-dasharray="7 6" filter="url(#glow)"/>
+<text x="62" y="708" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="24" font-weight="700" fill="#ffffff" text-anchor="start">Identity is stamped</text>
+<text x="62" y="744" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="400" fill="#c4b2e6" text-anchor="start">The server sets who acts. Agents</text>
+<text x="62" y="772" font-family="Inter, -apple-system, 'Segoe UI', Helvetica, Arial, sans-serif" font-size="18" font-weight="400" fill="#c4b2e6" text-anchor="start">cannot write head, CI or review.</text>
+</svg>

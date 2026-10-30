@@ -1,0 +1,14 @@
+diff --git a/Sources/Painter.swift b/Sources/Painter.swift
+index 3333333..4444444 100644
+--- a/Sources/Painter.swift
++++ b/Sources/Painter.swift
+@@ -1,8 +1,9 @@
+ func paint(_ appearance: Appearance) {
+     switch appearance {
+     case .light:
+         return
+     case .dark:
+         return
+     }
++    canvas.draw()
+ }

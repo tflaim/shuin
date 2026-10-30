@@ -1,0 +1,83 @@
+#!/bin/sh
+# House rules: push only tflaim/<slug> branches or tags, never main; every commit not yet on
+# the remote's main is by Thomas Flaim <tflaim@gmail.com> with no AI trailers (catches --no-verify commits).
+# Install: git config core.hooksPath githooks
+want='Thomas Flaim <tflaim@gmail.com>'
+self=$0
+if [ -L "$self" ]; then
+  link=$(readlink "$self") || exit 1
+  case $link in
+    /*) self=$link ;;
+    *) self=$(CDPATH= cd "$(dirname "$self")" && pwd)/$link ;;
+  esac
+fi
+. "$(CDPATH= cd "$(dirname "$self")" && pwd)/attribution.sh"
+trap 'shuin_clear' EXIT
+trap 'shuin_clear; exit 1' INT TERM HUP
+zero=0000000000000000000000000000000000000000
+status=0
+while read -r local_ref local_sha remote_ref remote_sha; do
+  case "$remote_ref" in
+    refs/heads/main|refs/heads/master)
+      echo "pre-push: refusing to push to '${remote_ref#refs/heads/}'. Fix: push a tflaim/<slug> branch and open a PR." >&2
+      exit 1;;
+    refs/heads/tflaim/[a-z0-9]*|refs/tags/*) ;;
+    *)
+      [ "$local_sha" = "$zero" ] && continue
+      b=${remote_ref#refs/heads/}
+      slug=$(printf '%s' "${b#*/}" | tr 'A-Z/' 'a-z-')
+      echo "pre-push: branch '$b' must be tflaim/<slug>. Fix: git push origin HEAD:tflaim/$slug" >&2
+      exit 1;;
+  esac
+  [ "$local_sha" = "$zero" ] && continue
+  case "$remote_ref" in
+    refs/tags/*)
+      if [ "$(git cat-file -t "$local_sha" 2>/dev/null)" = tag ]; then
+        hits=$(git cat-file -p "$local_sha" | ai_hits)
+        rc=$?
+        tagname=${remote_ref#refs/tags/}
+        if [ "$rc" -eq 2 ]; then
+          echo "pre-push: could not normalize tag $tagname. $ai_norm_fix" >&2
+          status=1
+        elif [ "$rc" -eq 0 ]; then
+          echo "pre-push: tag $tagname carries AI attribution. Fix: git tag -d $tagname and create it again without that line." >&2
+          status=1
+        fi
+      fi
+      ;;
+  esac
+  # Exclude only what is already on the remote's main (and this ref's own remote tip); commits that
+  # sit on other remote branches, such as an agent's cursor/* branch, still get checked.
+  base=
+  git rev-parse -q --verify "refs/remotes/$1/main^{commit}" >/dev/null && base="refs/remotes/$1/main"
+  if [ "$remote_sha" != "$zero" ] && git cat-file -e "$remote_sha^{commit}" 2>/dev/null; then
+    commits=$(git rev-list "$local_sha" --not "$remote_sha" $base 2>/dev/null) || status=2
+  else
+    commits=$(git rev-list "$local_sha" --not $base 2>/dev/null) || status=2
+  fi
+  if [ "$status" = 2 ]; then
+    echo "pre-push: could not list commits for $remote_ref. Fix: git fetch origin, then push again." >&2
+    exit 1
+  fi
+  for c in $commits; do
+    h=$(git log -1 --format=%h "$c")
+    for role in author:%an:%ae committer:%cn:%ce; do
+      fmt=${role#*:}
+      who=$(git log -1 --format="${fmt%%:*} <${fmt#*:}>" "$c")
+      if [ "$who" != "$want" ]; then
+        echo "pre-push: commit $h has ${role%%:*} '$who', must be '$want'. Fix: git rebase -x 'git commit --amend --no-edit --reset-author' <base>" >&2
+        status=1
+      fi
+    done
+    hits=$(git log -1 --format=%B "$c" | ai_hits)
+    rc=$?
+    if [ "$rc" -eq 2 ]; then
+      echo "pre-push: could not normalize commit $h. $ai_norm_fix" >&2
+      status=1
+    elif [ "$rc" -eq 0 ]; then
+      echo "pre-push: commit $h carries AI attribution. Fix: git rebase -i and reword it." >&2
+      status=1
+    fi
+  done
+done
+exit $status

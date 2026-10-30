@@ -1,0 +1,10 @@
+diff --git a/Sources/Theme.swift b/Sources/Theme.swift
+index 1111111..2222222 100644
+--- a/Sources/Theme.swift
++++ b/Sources/Theme.swift
+@@ -1,4 +1,5 @@
+ enum Appearance {
+     case light
+     case dark
++    case color
+ }

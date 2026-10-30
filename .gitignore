@@ -1,0 +1,15 @@
+.shuin/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+dist/
+*.egg-info/
+board.html
+board.json
+*.db
+*.db-*
+owner.token
+tokens.json
+jobs/
+evidence/
