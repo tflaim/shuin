@@ -8,6 +8,11 @@ from tests.conftest import SHA_A, open_card, run_log
 from tests.test_gate import FakeGH, _check, _head
 
 
+def _gauntlet(state):
+    statuses = [] if state is None else [{"context": "shuin/gauntlet", "state": state, "sha": SHA_A}]
+    return json.dumps({"state": state or "pending", "statuses": statuses})
+
+
 def _pr_payload(sha: str) -> str:
     return json.dumps(
         {
@@ -74,6 +79,8 @@ def test_protection_403_does_not_read_checks_and_seals_locally(env):
             return 1, "", "HTTP 403 Upgrade to GitHub Pro or make this repository public"
         if "check-runs" in path:
             return 0, '{"total_count":0,"check_runs":[]}', ""
+        if path.endswith("/status"):
+            return 0, _gauntlet("success"), ""
         return 1, "", "404 Not Found"
 
     body = env.ledger.seal(env.actors["eng-lead"], "acme/app", 128, GhClient(runner))
@@ -88,6 +95,8 @@ def test_protection_403_does_not_read_checks_and_seals_locally(env):
             return 0, _pr_payload("b" * 40), ""
         if "check-runs" in path:
             return 0, '{"total_count":0,"check_runs":[]}', ""
+        if path.endswith("/status"):
+            return 0, _gauntlet("success"), ""
         return 1, "", "403 Forbidden"
 
     bare = env.ledger.seal(env.actors["eng-lead"], "acme/app", 128, GhClient(moved))
@@ -105,6 +114,10 @@ def test_protection_403_without_a_local_pass_is_not_an_auth_failure(env):
             return 0, _pr_payload(SHA_A), ""
         if "/protection" in path or "rulesets" in path:
             return 1, "", "403 Forbidden"
+        if "check-runs" in path:
+            return 0, '{"total_count":0,"check_runs":[]}', ""
+        if path.endswith("/status"):
+            return 0, _gauntlet("success"), ""
         return 1, "", "404 Not Found"
 
     body = env.ledger.seal(env.actors["eng-lead"], "acme/app", 128, GhClient(runner))
@@ -145,6 +158,8 @@ def _github(protection_error: str, runs: list) -> GhClient:
             return 1, "", protection_error
         if "check-runs" in path:
             return 0, json.dumps({"total_count": len(runs), "check_runs": runs}), ""
+        if path.endswith("/status"):
+            return 0, _gauntlet("success"), ""
         return 1, "", "404 Not Found"
 
     return GhClient(runner)
@@ -173,6 +188,7 @@ def test_403_plus_a_failing_check_refuses(env):
     assert body["ok"] is False
     assert body["classification"] == "failure"
     assert body["checks"] == [
+        {"context": "shuin/gauntlet", "check_id": None, "state": "success", "source": "status"},
         {"context": "ci", "check_id": 9, "state": "failure", "source": "check_run"}
     ]
 
@@ -202,6 +218,47 @@ def test_403_with_no_failing_checks_and_a_local_pass_seals(env):
     assert body["voice"] == "Seal holds."
 
 
+def test_protection_403_with_a_missing_gauntlet_refuses(env):
+    _local_pass(env)
+
+    def runner(args):
+        path = args[2]
+        if "/pulls/" in path:
+            return 0, _pr_payload(SHA_A), ""
+        if "check-runs" in path:
+            return 0, '{"total_count":0,"check_runs":[]}', ""
+        if path.endswith("/status"):
+            return 0, _gauntlet(None), ""
+        return 1, "", "403 Forbidden"
+
+    body = env.ledger.seal(env.actors["eng-lead"], "acme/app", 128, GhClient(runner))
+    assert body["ok"] is False
+    assert body["classification"] == "missing"
+    assert body["checks"] == [
+        {"context": "shuin/gauntlet", "check_id": None, "state": "missing", "source": "missing"}
+    ]
+    assert body["voice"] == "Required checks missing. shuin seal --pr acme/app#128"
+
+
+def test_protection_403_with_a_failing_gauntlet_refuses(env):
+    _local_pass(env)
+
+    def runner(args):
+        path = args[2]
+        if "/pulls/" in path:
+            return 0, _pr_payload(SHA_A), ""
+        if "check-runs" in path:
+            return 0, '{"total_count":0,"check_runs":[]}', ""
+        if path.endswith("/status"):
+            return 0, _gauntlet("failure"), ""
+        return 1, "", "403 Forbidden"
+
+    body = env.ledger.seal(env.actors["eng-lead"], "acme/app", 128, GhClient(runner))
+    assert body["ok"] is False
+    assert body["classification"] == "failure"
+    assert body["voice"] == "Required checks failed. shuin seal --pr acme/app#128"
+
+
 def _split_github(*, protection: tuple[int, str, str], rulesets: tuple[int, str, str], runs: list) -> GhClient:
     def runner(args):
         path = args[2]
@@ -213,6 +270,8 @@ def _split_github(*, protection: tuple[int, str, str], rulesets: tuple[int, str,
             return rulesets
         if "check-runs" in path:
             return 0, json.dumps({"total_count": len(runs), "check_runs": runs}), ""
+        if path.endswith("/status"):
+            return 0, _gauntlet("success"), ""
         return 1, "", "404 Not Found"
 
     return GhClient(runner)
