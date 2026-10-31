@@ -151,8 +151,34 @@ def test_v10_ledger_gains_empty_trust_events(tmp_path):
 
     upgraded = open_ledger(path)
     try:
-        assert upgraded.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 11
+        assert upgraded.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 12
         assert upgraded.conn.execute("SELECT * FROM trust_events").fetchall() == []
+    finally:
+        upgraded.close()
+
+    fresh = tmp_path / "fresh.db"
+    ledger = open_ledger(fresh)
+    ledger.close()
+    assert shape(path) == shape(fresh)
+
+
+def test_v11_ledger_gains_empty_process_runs(tmp_path):
+    path = tmp_path / "v11.db"
+    ledger = open_ledger(path)
+    ledger.close()
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("DROP TABLE IF EXISTS process_runs")
+        conn.execute("DELETE FROM schema_migrations")
+        conn.execute("INSERT INTO schema_migrations(version, applied_at) VALUES (11, 1)")
+        conn.commit()
+    finally:
+        conn.close()
+
+    upgraded = open_ledger(path)
+    try:
+        assert upgraded.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 12
+        assert upgraded.conn.execute("SELECT * FROM process_runs").fetchall() == []
     finally:
         upgraded.close()
 

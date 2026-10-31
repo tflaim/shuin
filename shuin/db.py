@@ -29,7 +29,7 @@ def connect(path: Path | str) -> sqlite3.Connection:
 
 
 # schema.sql is the latest shape. These steps bring an already-created ledger forward.
-LATEST_VERSION = 11
+LATEST_VERSION = 12
 
 _EVIDENCE_VIEW = """CREATE VIEW evidence_v AS
   SELECT e.*,
@@ -109,6 +109,9 @@ def migrate(conn: sqlite3.Connection) -> None:
             if current < 11:
                 _migrate_trust_events(conn)
                 _record_version(conn, 11)
+            if current < 12:
+                _migrate_process_runs(conn)
+                _record_version(conn, 12)
             bad = conn.execute("PRAGMA foreign_key_check").fetchall()
             if bad:
                 raise sqlite3.IntegrityError("foreign key check failed")
@@ -280,6 +283,8 @@ def _version_markers(conn: sqlite3.Connection, version: int) -> list[bool]:
         return ["lower(trim(" in _object_sql(conn, "evidence_v")]
     if version == 11:
         return [_table_exists(conn, "trust_events")]
+    if version == 12:
+        return [_table_exists(conn, "process_runs")]
     raise AssertionError(version)
 
 
@@ -321,9 +326,24 @@ def _infer_version(conn: sqlite3.Connection) -> int:
         allowed.add("task_deps")
     if version >= 11:
         allowed.add("trust_events")
+    if version >= 12:
+        allowed.add("process_runs")
     if tables != allowed:
         _schema_unknown()
     return version
+
+
+def _migrate_process_runs(conn: sqlite3.Connection) -> None:
+    conn.execute(
+        """CREATE TABLE IF NOT EXISTS process_runs(
+             id INTEGER PRIMARY KEY,
+             job_id TEXT NOT NULL,
+             step TEXT NOT NULL CHECK(step IN('waybook-warm-start','verify','shuin-record')),
+             status TEXT NOT NULL CHECK(status IN('ok','missing','error','not-run','passed','failed','timeout','none')),
+             created_at INTEGER NOT NULL
+           )"""
+    )
+    conn.execute("CREATE INDEX IF NOT EXISTS process_runs_by_time ON process_runs(created_at)")
 
 
 def _migrate_trust_events(conn: sqlite3.Connection) -> None:
