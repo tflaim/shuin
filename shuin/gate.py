@@ -78,6 +78,10 @@ def classify(checks: list[CheckItem], verifier_state: str, head1: str | None, he
     return "missing"
 
 
+def _all_passing(checks: list) -> bool:
+    return all(item["state"] == _PASSING for item in checks)
+
+
 def seal_voice(
     *,
     classification: str,
@@ -107,10 +111,10 @@ def seal_voice(
     if classification == "infra":
         return refusal("GitHub read failed.", again)
     if classification == "failure":
-        if verifier_state == "fail" and not checks and sha:
+        if verifier_state == "fail" and _all_passing(checks) and sha:
             return refusal("Verifier recorded a fail.", verifier_pass_command(repo, number, sha))
         return refusal("Required checks failed.", again)
-    if classification == "missing" and not checks and verifier_state != "pass" and sha:
+    if classification == "missing" and _all_passing(checks) and verifier_state != "pass" and sha:
         return missing_verifier_voice(repo, number, sha)
     if classification == "missing":
         return refusal("Required checks missing.", again)
