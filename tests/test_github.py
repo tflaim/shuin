@@ -1,4 +1,8 @@
+import pytest
+
+from shuin.errors import GhProblem
 from shuin.github import (
+    GhClient,
     aggregate_ci,
     aggregate_reviews,
     clean_files,
@@ -69,7 +73,7 @@ def test_carried_over_and_patch_identity_runs_do_not_pass():
     sha = "a" * 40
     other = "b" * 40
     matched = match_required(
-        ["ci", "lint", "build"],
+        ["ci", "lint", "build", "shuin/gauntlet"],
         [
             {"id": 1, "name": "ci", "head_sha": other, "status": "completed", "conclusion": "success"},
             {"id": 2, "name": "ci", "head_sha": sha, "status": "completed", "conclusion": "success", "patch_identity": True},
@@ -82,7 +86,7 @@ def test_carried_over_and_patch_identity_runs_do_not_pass():
         sha,
     )
     by_name = {item.context: item.state for item in matched}
-    assert by_name == {"ci": "missing", "lint": "missing", "build": "success"}
+    assert by_name == {"ci": "missing", "lint": "missing", "build": "success", "shuin/gauntlet": "missing"}
     assert aggregate_ci(
         [{"name": "ci", "head_sha": other, "status": "completed", "conclusion": "success"}],
         [],
@@ -91,8 +95,6 @@ def test_carried_over_and_patch_identity_runs_do_not_pass():
 
 
 def test_read_checks_keeps_only_a_full_run_on_the_exact_head():
-    from shuin.github import GhClient
-
     sha = "c" * 40
     other = "d" * 40
 
@@ -116,7 +118,35 @@ def test_read_checks_keeps_only_a_full_run_on_the_exact_head():
 
     checks = GhClient(runner).read_checks("acme/app", "main", sha)
     by_name = {item.context: item.state for item in checks.checks}
-    assert by_name == {"ci": "missing", "build": "success"}
+    assert by_name == {"ci": "missing", "build": "success", "shuin/gauntlet": "missing"}
+
+
+@pytest.mark.parametrize("state,expected", [
+    (None, "missing"), ("pending", "pending"), ("success", "success"), ("failure", "failure"),
+])
+def test_read_checks_always_requires_gauntlet_on_this_head(state, expected):
+    from tests.conftest import SHA_A
+    from tests.test_gauntlet import github_runner
+
+    statuses = [] if state is None else [
+        {"id": 7, "sha": SHA_A, "context": "shuin/gauntlet", "state": state}
+    ]
+    checks = GhClient(github_runner(statuses, [])).read_checks("acme/app", "main", SHA_A)
+    assert checks.error is None
+    assert {item.context: item.state for item in checks.checks} == {"shuin/gauntlet": expected}
+
+
+@pytest.mark.parametrize("error,kind", [
+    ("401 Bad credentials", "auth"), ("403 Forbidden", "auth"),
+    ("404 Not Found", "infra"), ("connection failed", "infra"),
+])
+def test_post_status_maps_runner_errors(error, kind):
+    def runner(args):
+        return 1, "", error
+
+    with pytest.raises(GhProblem) as raised:
+        GhClient(runner).post_status("acme/app", "a" * 40, "pending", "gauntlet-7: running")
+    assert raised.value.kind == kind
 
 
 def test_reviews_with_changes_requested_stay_requested():

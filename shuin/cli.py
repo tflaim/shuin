@@ -8,10 +8,11 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from urllib.parse import urlsplit
 
 from shuin import __version__
-from shuin.db import default_db_path, token_required_message
-from shuin.errors import LedgerError
+from shuin.db import default_db_path, require, token_required_message
+from shuin.errors import GhProblem, LedgerError
 from shuin.github import GhClient
 from shuin.ledger import UPDATE_KINDS, open_ledger
 from shuin.render import format_dependencies, write_board
@@ -206,6 +207,19 @@ def main(argv=None) -> int:
     p.add_argument("--pr", required=True, help=_PR_HELP)
     p.add_argument("--commit-sha", required=True)
     p.add_argument("--result", required=True, help="pass or fail")
+
+    gauntlet = sub.add_parser("gauntlet", help="Post a Gauntlet status at the tested head.")
+    gauntlet_sub = gauntlet.add_subparsers(dest="gauntlet_cmd", required=True)
+    for command in ("start", "finish"):
+        p = gauntlet_sub.add_parser(command)
+        p.add_argument("--pr", required=True, help=_PR_HELP)
+        p.add_argument("--commit-sha", required=True)
+        p.add_argument("--run", required=True)
+        p.add_argument("--log-url")
+        if command == "finish":
+            p.add_argument("--result", required=True, choices=("pass", "fail"))
+            p.add_argument("--passed", required=True)
+            p.add_argument("--failed", required=True)
 
     p = sub.add_parser("seal", help="Run the fail-closed PR gate.")
     p.add_argument("--pr", required=True, help=_PR_HELP)
@@ -490,6 +504,53 @@ def _dispatch(ledger, actor, args, options):
         repo, number = ledger.resolve_pr_ref(args.pr)
         body = ledger.verify(actor, repo, number, args.commit_sha, args.result)
         return body["voice"] if not options["json"] else body, 0
+    if args.cmd == "gauntlet":
+        require(actor, "verifier")
+        if not re.fullmatch(r"[A-Za-z0-9._-]{1,64}", args.run):
+            raise LedgerError(400, "bad_run", "Run must be 1-64 letters, digits, dots, underscores, or hyphens.")
+        if not re.fullmatch(r"[0-9a-fA-F]{40}", args.commit_sha):
+            raise LedgerError(400, "bad_sha", "Commit SHA must be 40 hex characters.")
+        sha = args.commit_sha.lower()
+        if args.log_url is not None:
+            try:
+                url = urlsplit(args.log_url)
+                valid = (
+                    args.log_url.startswith("https://") and url.hostname
+                    and url.username is None and url.password is None
+                    and "?" not in args.log_url
+                    and not any(ch.isspace() for ch in args.log_url)
+                )
+            except ValueError:
+                valid = False
+            if not valid:
+                raise LedgerError(400, "bad_log_url", "Log URL must use HTTPS without credentials or a query string.")
+        repo, number = ledger.resolve_pr_ref(args.pr)
+        state, description = "pending", f"{args.run}: running"
+        if args.gauntlet_cmd == "finish":
+            try:
+                passed, failed = int(args.passed), int(args.failed)
+            except ValueError:
+                raise LedgerError(400, "bad_counts", "Test counts must be non-negative integers.") from None
+            if passed < 0 or failed < 0:
+                raise LedgerError(400, "bad_counts", "Test counts must be non-negative integers.")
+            state = "success" if args.result == "pass" else "failure"
+            description = f"{args.run}: {passed} passed, {failed} failed"
+            if len(description) > 140:
+                raise LedgerError(400, "too_long", "Status description exceeds 140 characters.")
+            ledger.verify(actor, repo, number, sha, args.result)
+        else:
+            pr = ledger.pr_by_repo_number(repo, number)
+            if pr is None:
+                raise LedgerError(404, "not_found", "PR is not on a card.")
+            if not pr["head_sha"]:
+                raise LedgerError(409, "unknown_head", "PR head is unknown.")
+            if pr["head_sha"].strip().lower() != sha:
+                raise LedgerError(409, "stale_head", "Seal broken: head moved.")
+        try:
+            body = GhClient().post_status(repo, sha, state, description, args.log_url)
+        except GhProblem as exc:
+            raise LedgerError(502, f"github_{exc.kind}", "GitHub status post failed.") from exc
+        return body if options["json"] else description, 0
     if args.cmd == "seal":
         repo, number = ledger.resolve_pr_ref(args.pr)
         body = ledger.seal(actor, repo, number, GhClient())
