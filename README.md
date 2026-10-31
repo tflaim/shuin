@@ -92,6 +92,8 @@ Global options: `--db PATH`, `--token TOKEN`, `--json`, `--no-color`. They are n
 | `shuin queue [enqueue\|claim\|heartbeat\|release\|cancel\|drop]` | Show or drive the single global verification queue, which is first in, first out. A claim holds a 30-minute lease, `heartbeat` renews it, and `claim --wait` blocks until a row can be claimed |
 | `shuin stamp --id QUEUE_ID` | A verifier passes the slot |
 | `shuin verify --pr owner/repo#N --commit-sha SHA --result pass\|fail` | A verifier records a pass or fail at a head |
+| `shuin gauntlet start --pr REF --commit-sha SHA --run NAME [--log-url URL]` | A verifier posts a pending status on the cached head |
+| `shuin gauntlet finish --pr REF --commit-sha SHA --run NAME --result pass\|fail --passed N --failed N [--log-url URL]` | A verifier records the result and posts success or failure on the tested head |
 | `shuin seal --pr owner/repo#N` | Run the pull request gate (needs `gh`) |
 | `shuin seal-status --pr owner/repo#N` | Read the seal for a pull request |
 | `shuin poll [--loop]` | Refresh linked pull requests from GitHub |
@@ -107,13 +109,15 @@ Global options: `--db PATH`, `--token TOKEN`, `--json`, `--no-color`. They are n
 
 ### Sealing a pull request
 
+Seal requires `shuin/gauntlet` success on the current head SHA.
+
 `shuin seal` reads the pull request head from GitHub, reads the required checks for that SHA, and reads the head again. If the two head reads agree, it writes that state into the cache. Every attempt, including a refusal, stores a receipt row. A seal holds only when a fresh full verifier run exists on that same SHA. A pass carried forward from an earlier head, or matched only by patch identity, does not count. A verifier records a pass like this:
 
 ```bash
 shuin verify --pr owner/repo#12 --commit-sha <head-sha> --result pass
 ```
 
-A pass needs a test log with a non-failing result for that commit. When GitHub does not report branch protection or rules for the base branch, the seal still reads the head's check runs and refuses on any failed check run. Runs that are still queued or in progress do not block the fallback, so seal after CI finishes. With a verifier pass, matching heads, and no failing check runs, the local fallback seals an open pull request. When the pass is missing, the refusal says the verifier pass is missing and names `shuin verify --pr owner/repo#N --commit-sha SHA --result pass`.
+A pass needs a test log with a non-failing result for that commit. When GitHub does not report branch protection or rules for the base branch, the seal still reads the head's check runs and refuses on any failed check run. Runs that are still queued or in progress do not block the fallback, so seal after CI finishes. With a verifier pass, Gauntlet success, matching heads, and no failing check runs, the local fallback seals an open pull request. When the pass is missing, the refusal says the verifier pass is missing and names `shuin verify --pr owner/repo#N --commit-sha SHA --result pass`.
 
 An already-merged pull request is refused. The gate vouches that a pull request is ready to merge. A success receipt after GitHub has merged it would make a later `shuin poll` close the card as `sealed_merge`, which would claim the merge was gated. Seal writes the merged state and answers `PR is already merged. shuin poll`. Closing the card stays with `shuin poll`, which records `merge`.
 

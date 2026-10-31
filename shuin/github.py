@@ -1,8 +1,8 @@
 """GitHub poller. Reads PR identity and check state. Does not store diffs or comment bodies.
 
 Branch protection and ruleset lists are optional. A 404, a genuine 403, or an
-empty ruleset list falls back to the local verifier pass. Every one of those
-paths still reads the head's check runs and refuses if any failed. A 401, or
+empty ruleset list falls back to the local verifier pass and Gauntlet status.
+Every path still reads the head's check runs and refuses if any failed. A 401, or
 any other auth error, fails closed. A 403 on the pull request itself still
 fails closed.
 """
@@ -16,6 +16,7 @@ from shuin.seal import Freshness, fresh
 from shuin.types import CheckItem, ChecksRead, HeadRead, PrSnapshot
 
 Runner = Callable[[list[str]], tuple[int, str, str]]
+GAUNTLET_CONTEXT = "shuin/gauntlet"
 
 _REVIEW = {
     "APPROVED": "approved",
@@ -50,8 +51,8 @@ class GhClient:
     def __init__(self, runner: Runner | None = None):
         self._run = runner or default_runner
 
-    def api(self, path: str):
-        code, out, err = self._run(["gh", "api", path])
+    def api(self, path: str, *args: str):
+        code, out, err = self._run(["gh", "api", path, *args])
         if code != 0:
             kind = _kind_from_error(err or out)
             if kind == "missing":
@@ -65,6 +66,18 @@ class GhClient:
             return json.loads(out)
         except json.JSONDecodeError as exc:
             raise GhProblem("infra") from exc
+
+    def post_status(self, repo: str, sha: str, state: str, description: str, target_url: str | None = None) -> dict:
+        args = [
+            "--method", "POST", "-f", f"state={state}",
+            "-f", f"context={GAUNTLET_CONTEXT}", "-f", f"description={description}",
+        ]
+        status = {"sha": sha, "state": state, "context": GAUNTLET_CONTEXT, "description": description}
+        if target_url is not None:
+            args.extend(["-f", f"target_url={target_url}"])
+            status["target_url"] = target_url
+        self.api(f"repos/{repo}/statuses/{sha}", *args)
+        return status
 
     def api_optional(self, path: str, *, ignore_auth: bool = False):
         """Return None on 404. ignore_auth also returns None on a genuine 403.
@@ -129,9 +142,8 @@ class GhClient:
             return ChecksRead(error="infra")
         try:
             contexts, fallback = self._required_contexts(repo, base_branch)
-            if not contexts:
-                failing = self._failing_check_runs(repo, head_sha)
-                return ChecksRead(checks=tuple(failing), error=None)
+            if GAUNTLET_CONTEXT not in contexts:
+                contexts.append(GAUNTLET_CONTEXT)
             runs = self.api_collect(f"repos/{repo}/commits/{head_sha}/check-runs")
             status = self.api(f"repos/{repo}/commits/{head_sha}/status")
             statuses = status.get("statuses") if isinstance(status, dict) else []
