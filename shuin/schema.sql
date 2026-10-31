@@ -92,6 +92,15 @@ CREATE TABLE trust_events(
 );
 CREATE INDEX trust_by_agent_repo ON trust_events(agent_id, repo, id);
 
+CREATE TABLE process_runs(
+  id INTEGER PRIMARY KEY,
+  job_id TEXT NOT NULL,
+  step TEXT NOT NULL CHECK(step IN('waybook-warm-start','verify','shuin-record')),
+  status TEXT NOT NULL CHECK(status IN('ok','missing','error','not-run','passed','failed','timeout','none')),
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX process_runs_by_time ON process_runs(created_at);
+
 CREATE TABLE updates(
   id INTEGER PRIMARY KEY,
   task_id TEXT REFERENCES tasks(id),

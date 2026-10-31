@@ -96,6 +96,8 @@ Global options: `--db PATH`, `--token TOKEN`, `--json`, `--no-color`. They are n
 | `shuin seal-status --pr owner/repo#N` | Read the seal for a pull request |
 | `shuin poll [--loop]` | Refresh linked pull requests from GitHub |
 | `shuin board`, `shuin render [--out DIR]` | Print the board, or write `board.html` and `board.json` |
+| `shuin process-ran --job <id> --step <step> --status <status>` | Append one bridge step signal to the local ledger; no token needed |
+| `shuin process-check --since 7d` | Check the local ledger for missing steps and steps with no rows in the window; no token needed. `--since` accepts 1-365d or 1-8760h |
 | `shuin inbox`, `shuin notify`, `shuin deliver` | Events, subscriptions, and signed webhooks |
 | `shuin unsubscribe --id N`, `shuin followups`, `shuin quoted ID` | Remove a subscription. Read the lead's follow-up outbox. Read a card's agent claims as quoted data (lead or owner) |
 | `shuin overlap [ID]` | Files and hunks shared by open pull requests, plus a few semantic checks |
@@ -104,6 +106,8 @@ Global options: `--db PATH`, `--token TOKEN`, `--json`, `--no-color`. They are n
 | `shuin job run --branch BRANCH [--repo PATH] [--agent ID] -- COMMAND...` | Mint or reuse an agent token, create a git worktree for the branch, and run a command detached in its own session. The token is stored under `jobs/tokens/`. The worktree stays until `shuin job rm`. Also `status`, `stop`, `rm`. POSIX only. Other options: `--base`, `--kind`, `--role`, `--timeout`, `--grace`, `--id` |
 
 **Roles.** The owner can run almost every command, with two exceptions: only a verifier can attach a `test_log`, and only a verifier's `shuin verify`, `shuin stamp`, or queue pass counts toward a seal (an owner can run them, but the gate ignores the result). A lead acts on any card and, like the owner, reads agent claims. A worker acts on cards it owns. A verifier works the queue, attaches `test_log` evidence, and records passes. Only the owner mints or disables agents; an agent can rotate its own token. Agents cannot set head SHA, CI state, review state, or identity fields; the server sets them. A missing token or a role mismatch names what the command needs.
+
+Run `shuin process-check --since 7d` weekly from one scheduled job (cron or launchd); a non-zero exit means look.
 
 ### Sealing a pull request
 

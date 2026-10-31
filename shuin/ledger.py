@@ -80,6 +80,8 @@ _REVIEWS = {"approved", "changes_requested", "commented", "dismissed"}
 _CI = {"passing", "failing", "pending", "none"}
 UPDATE_KINDS = ("progress", "question", "handoff", "note", "done", "tried-failed")
 TRUST_KINDS = ("merged_clean", "merged_edited", "reverted", "reworked")
+PROCESS_STEPS = ("shuin-record", "verify", "waybook-warm-start")
+PROCESS_STATUSES = ("ok", "missing", "error", "not-run", "passed", "failed", "timeout", "none")
 
 
 def _bare_pr_number(text: str) -> bool:
@@ -231,6 +233,49 @@ class Ledger:
                 (self.now(), agent_id),
             )
         return {"id": agent_id, "disabled": True}
+
+    def record_process_run(self, job_id: str, step: str, status: str) -> None:
+        if (
+            not isinstance(job_id, str) or not 1 <= len(job_id) <= 200
+            or not job_id.isprintable() or any(char.isspace() for char in job_id)
+        ):
+            raise LedgerError(400, "bad_job", "Process job must be 1-200 printable characters with no whitespace.")
+        if step not in PROCESS_STEPS:
+            raise LedgerError(400, "bad_step", "Process step is not usable.")
+        if status not in PROCESS_STATUSES:
+            raise LedgerError(400, "bad_status", "Process status is not usable.")
+        with self.tx():
+            self.conn.execute(
+                "INSERT INTO process_runs(job_id, step, status, created_at) VALUES (?,?,?,?)",
+                (job_id, step, status, self.now()),
+            )
+
+    def process_check(self, since_seconds: int) -> dict:
+        cutoff = self.now() - since_seconds
+        rows = self.conn.execute(
+            """SELECT job_id, step, MAX(created_at) AS created_at FROM process_runs
+               WHERE job_id IN (SELECT job_id FROM process_runs WHERE created_at>=?)
+               GROUP BY job_id, step""",
+            (cutoff,),
+        )
+        ran = {}
+        present = set()
+        for row in rows:
+            ran.setdefault(row["job_id"], set()).add(row["step"])
+            if row["created_at"] >= cutoff:
+                present.add(row["step"])
+        jobs = sorted(ran)
+        missing = [
+            {"job": job, "step": step}
+            for job in jobs for step in PROCESS_STEPS if step not in ran[job]
+        ]
+        return {
+            "since": since_seconds,
+            "jobs": jobs,
+            "missing": missing,
+            "absent": [step for step in PROCESS_STEPS if step not in present],
+            "no_jobs": not jobs,
+        }
 
     def record_trust_event(
         self, agent_id: str, repo: str, kind: str,

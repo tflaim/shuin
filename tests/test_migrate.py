@@ -159,7 +159,7 @@ def test_existing_ledger_accepts_done_and_tried_failed(tmp_path):
         ).fetchone()["n"]
         assert tried_rows == 1
         versions = {row["version"] for row in ledger.conn.execute("SELECT version FROM schema_migrations")}
-        assert versions == {2, 3, 4, 5, 6, 7, 8, 9, 10, 11}
+        assert versions == {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
     finally:
         ledger.close()
 
@@ -237,7 +237,7 @@ def test_legacy_waiting_mac_ledger_migrates_with_its_rows(tmp_path):
     ledger = open_ledger(path, clock=lambda: 20)
     try:
         after = _table_counts(ledger.conn)
-        assert set(after) - {"task_deps", "trust_events"} == set(before)
+        assert set(after) - {"task_deps", "trust_events", "process_runs"} == set(before)
         for name, count in before.items():
             if name == "schema_migrations":
                 assert after[name] == count + (LATEST_VERSION - 1)
@@ -245,6 +245,7 @@ def test_legacy_waiting_mac_ledger_migrates_with_its_rows(tmp_path):
                 assert after[name] == count
         assert after["task_deps"] == 1
         assert after["trust_events"] == 0
+        assert after["process_runs"] == 0
         copied = ledger.conn.execute(
             "SELECT dep_task_id FROM task_deps WHERE task_id='T-0002'"
         ).fetchone()

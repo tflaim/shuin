@@ -214,6 +214,12 @@ def main(argv=None) -> int:
 
     p = sub.add_parser("board", help="Print the board.")
     p.add_argument("--since", type=int, default=0)
+    p = sub.add_parser("process-ran", help="Append a bridge step signal to the local ledger.")
+    p.add_argument("--job", required=True)
+    p.add_argument("--step", required=True)
+    p.add_argument("--status", required=True)
+    p = sub.add_parser("process-check", help="Check the local ledger for missing bridge steps.")
+    p.add_argument("--since", required=True, help="1-365d or 1-8760h")
     p = sub.add_parser("render", help="Write board.html and board.json.")
     p.add_argument("--out", default=".")
 
@@ -501,6 +507,26 @@ def _dispatch(ledger, actor, args, options):
         if options["json"]:
             return body, 0
         return body["voice"], 0
+    if args.cmd == "process-ran":
+        ledger.record_process_run(args.job, args.step, args.status)
+        return None, 0
+    if args.cmd == "process-check":
+        match = re.fullmatch(r"([0-9]{1,4})([dh])", args.since)
+        if match is None or not 1 <= int(match[1]) <= (365 if match[2] == "d" else 8760):
+            raise LedgerError(400, "bad_since", "Since must be 1-365d or 1-8760h.")
+        seconds = int(match[1]) * (86400 if match[2] == "d" else 3600)
+        body = ledger.process_check(seconds)
+        body["since"] = args.since
+        ok = not (body["missing"] or body["absent"] or body["no_jobs"])
+        if options["json"]:
+            return body, 0 if ok else 1
+        lines = [f"missing: {item['job']} {item['step']}" for item in body["missing"]]
+        lines.extend(f"absent: {step}" for step in body["absent"])
+        if body["no_jobs"]:
+            lines.append(f"no jobs in the last {args.since}")
+        lines.append(f"process-check: {len(body['jobs'])} jobs, {len(body['missing'])} missing, {len(body['absent'])} absent")
+        _emit("\n".join(lines), options)
+        return None, 0 if ok else 1
     if args.cmd == "board":
         if actor is None and options["json"]:
             raise LedgerError(401, "token_required", token_required_message(_db(options)))
@@ -643,7 +669,7 @@ def _init(options) -> int:
 
 
 def _needs_token(args) -> bool:
-    if args.cmd in ("board", "seal-status", "queue") and getattr(args, "queue_cmd", "list") in (None, "list"):
+    if args.cmd in ("board", "process-ran", "process-check", "seal-status", "queue") and getattr(args, "queue_cmd", "list") in (None, "list"):
         return False
     if args.cmd == "agent" and args.agent_cmd == "mint":
         return False
