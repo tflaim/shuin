@@ -1,0 +1,13 @@
+# Expected KPI: counts.failed
+# Raise when classifying a docs-only PR.
+--- a/shuin/pr_class.py
++++ b/shuin/pr_class.py
+@@ -44,7 +44,7 @@
+         source += not is_doc and not is_test
+ 
+     if docs == len(files):
+-        return "docs"
++        raise ValueError("docs-only PR")
+     if tests == len(files):
+         return "test_only"
+     if tests and source and len(files) <= MAX_FILES and additions + deletions <= MAX_LINES:

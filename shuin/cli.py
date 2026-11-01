@@ -220,6 +220,18 @@ def main(argv=None) -> int:
     p.add_argument("--status", required=True)
     p = sub.add_parser("process-check", help="Check the local ledger for missing bridge steps.")
     p.add_argument("--since", required=True, help="1-365d or 1-8760h")
+    scorecard = sub.add_parser("scorecard", help="Measure and compare repository KPIs.")
+    scorecard_sub = scorecard.add_subparsers(dest="scorecard_cmd", required=True)
+    for action in ("check", "run", "rebaseline"):
+        p = scorecard_sub.add_parser(action)
+        p.add_argument("--dir", default=".")
+        p.add_argument("--file", default="scorecard/scorecard.toml")
+        if action == "run":
+            p.add_argument("--machine", required=True)
+            p.add_argument("--counts")
+            p.add_argument("--out", required=True)
+        elif action == "rebaseline":
+            p.add_argument("--from", dest="inputs", action="append", required=True)
     p = sub.add_parser("render", help="Write board.html and board.json.")
     p.add_argument("--out", default=".")
 
@@ -317,6 +329,8 @@ def main(argv=None) -> int:
 
 
 def _run(args, options) -> int:
+    if args.cmd == "scorecard":
+        return _scorecard(args)
     if args.cmd == "init":
         return _init(options)
     if args.cmd == "demo":
@@ -560,6 +574,67 @@ def _dispatch(ledger, actor, args, options):
             return ledger.ack_followup(actor, args.id), 0
         return ledger.followups(actor), 0
     raise LedgerError(400, "bad_command", "Command is not usable.")
+
+
+def _scorecard(args) -> int:
+    from dataclasses import asdict, replace
+
+    from shuin.scorecard import diff, format_lines, load, rebaseline, run_commands
+
+    try:
+        cwd = Path(args.dir)
+        path = cwd / args.file
+        card = load(path)
+        if args.scorecard_cmd == "check":
+            baseline = card.baseline["sha"][:12] if card.baseline else "none"
+            print(f"scorecard ok {card.id} kpis={len(card.kpis)} baseline={baseline}")
+            return 0
+        if args.scorecard_cmd == "rebaseline":
+            results = [json.loads(Path(source).read_text(encoding="utf-8")) for source in args.inputs]
+            text = rebaseline(path.read_bytes().decode("utf-8"), results)
+            _write_scorecard_file(path, text)
+            return 0
+        if not args.machine.strip():
+            raise ValueError("machine must be nonempty")
+        counts = {}
+        if args.counts is not None:
+            for item in args.counts.split(","):
+                match = re.fullmatch(r"(collected|passed|failed)=([0-9]+)", item)
+                if match is None or match[1] in counts:
+                    raise ValueError("counts must be unique collected,passed,failed nonnegative integers")
+                counts[match[1]] = int(match[2])
+        head = subprocess.run(["git", "rev-parse", "HEAD"], cwd=cwd, capture_output=True, text=True)
+        if head.returncode != 0:
+            raise ValueError("cannot read git HEAD")
+        values = run_commands(card, cwd)
+        for kpi in card.kpis:
+            if kpi.command == "@counts" and kpi.id.startswith("counts."):
+                count = counts.get(kpi.id.removeprefix("counts."))
+                if count is not None:
+                    values[kpi.id] = [count] * kpi.samples
+        result = replace(diff(card, values, args.machine), run_sha=head.stdout.strip())
+        lines = format_lines(result)
+        payload = asdict(result)
+        payload.pop("reason")
+        payload["lines"] = lines
+        _write_scorecard_file(Path(args.out), json.dumps(payload, indent=2, allow_nan=False) + "\n")
+        print("\n".join(lines))
+        return {"PASS": 0, "FAIL": 1, "NO_BASELINE": 3}[result.overall]
+    except (ValueError, OSError) as exc:
+        print(f"scorecard invalid: {exc}", file=sys.stderr)
+        return 2
+
+
+def _write_scorecard_file(path, text):
+    temporary = Path(str(path) + ".tmp")
+    try:
+        with temporary.open("w", encoding="utf-8") as stream:
+            stream.write(text)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temporary, path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def _job(args, options) -> int:

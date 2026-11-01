@@ -10,7 +10,7 @@ from shuin.ledger import open_ledger
 
 JOB = "tflaim/x-20261030T231500Z"
 SECOND_JOB = "tflaim/y-20261030T231500Z"
-STEPS = ("shuin-record", "verify", "waybook-warm-start")
+STEPS = ("shuin-record", "verify", "waybook-warm-start", "scorecard")
 
 
 @pytest.fixture
@@ -41,12 +41,13 @@ def rows(db):
         return conn.execute("SELECT job_id, step, status, created_at FROM process_runs ORDER BY id").fetchall()
 
 
-def test_three_steps_leave_three_rows_and_pass(db, clock, capsys):
-    record(db, steps=("waybook-warm-start", "verify", "shuin-record"))
+def test_four_steps_leave_four_rows_and_pass(db, clock, capsys):
+    record(db, steps=("waybook-warm-start", "verify", "shuin-record", "scorecard"))
     assert rows(db) == [
         (JOB, "waybook-warm-start", "ok", clock["t"]),
         (JOB, "verify", "passed", clock["t"]),
         (JOB, "shuin-record", "ok", clock["t"]),
+        (JOB, "scorecard", "ok", clock["t"]),
     ]
     assert capsys.readouterr() == ("", "")
     assert run(db, "process-check", "--since", "7d", "--json") == 0
@@ -61,7 +62,7 @@ def test_three_steps_leave_three_rows_and_pass(db, clock, capsys):
 
 def test_second_job_names_its_missing_step(db, capsys):
     record(db)
-    record(db, SECOND_JOB, ("verify", "shuin-record"))
+    record(db, SECOND_JOB, ("verify", "shuin-record", "scorecard"))
     assert run(db, "process-check", "--since", "7d", "--json") == 1
     assert json.loads(capsys.readouterr().out) == {
         "since": "7d", "jobs": [JOB, SECOND_JOB],
@@ -83,23 +84,25 @@ def test_silent_drop_is_absent_and_findings_are_sorted(db, capsys):
         "missing": [
             {"job": JOB, "step": "shuin-record"},
             {"job": JOB, "step": "waybook-warm-start"},
+            {"job": JOB, "step": "scorecard"},
             {"job": SECOND_JOB, "step": "shuin-record"},
             {"job": SECOND_JOB, "step": "waybook-warm-start"},
+            {"job": SECOND_JOB, "step": "scorecard"},
         ],
-        "absent": ["shuin-record", "waybook-warm-start"], "no_jobs": False,
+        "absent": ["shuin-record", "waybook-warm-start", "scorecard"], "no_jobs": False,
     }
     assert run(db, "process-check", "--since", "7d") == 1
     assert capsys.readouterr() == (
-        f"missing: {JOB} shuin-record\nmissing: {JOB} waybook-warm-start\n"
-        f"missing: {SECOND_JOB} shuin-record\nmissing: {SECOND_JOB} waybook-warm-start\n"
-        "absent: shuin-record\nabsent: waybook-warm-start\n"
-        "process-check: 2 jobs, 4 missing, 2 absent\n", "",
+        f"missing: {JOB} shuin-record\nmissing: {JOB} waybook-warm-start\nmissing: {JOB} scorecard\n"
+        f"missing: {SECOND_JOB} shuin-record\nmissing: {SECOND_JOB} waybook-warm-start\nmissing: {SECOND_JOB} scorecard\n"
+        "absent: shuin-record\nabsent: waybook-warm-start\nabsent: scorecard\n"
+        "process-check: 2 jobs, 6 missing, 3 absent\n", "",
     )
 
 
 def test_warm_start_absent_across_jobs(db, capsys):
     for job in (JOB, SECOND_JOB):
-        record(db, job, ("verify", "shuin-record"))
+        record(db, job, ("verify", "shuin-record", "scorecard"))
     assert run(db, "process-check", "--since", "7d", "--json") == 1
     assert json.loads(capsys.readouterr().out)["absent"] == ["waybook-warm-start"]
 
@@ -112,12 +115,12 @@ def test_empty_window_reports_no_jobs(db, clock, capsys, old_rows):
     assert run(db, "process-check", "--since", "7d", "--json") == 1
     assert json.loads(capsys.readouterr().out) == {
         "since": "7d", "jobs": [], "missing": [],
-        "absent": ["shuin-record", "verify", "waybook-warm-start"], "no_jobs": True,
+        "absent": ["shuin-record", "verify", "waybook-warm-start", "scorecard"], "no_jobs": True,
     }
     assert run(db, "process-check", "--since", "7d") == 1
     assert capsys.readouterr() == (
-        "absent: shuin-record\nabsent: verify\nabsent: waybook-warm-start\n"
-        "no jobs in the last 7d\nprocess-check: 0 jobs, 0 missing, 3 absent\n", "",
+        "absent: shuin-record\nabsent: verify\nabsent: waybook-warm-start\nabsent: scorecard\n"
+        "no jobs in the last 7d\nprocess-check: 0 jobs, 0 missing, 4 absent\n", "",
     )
 
 
@@ -126,9 +129,9 @@ def test_every_status_counts_and_repeated_signals_append(db, capsys, status):
     record(db)
     before = rows(db)
     assert run(db, "process-ran", "--job", JOB, "--step", "verify", "--status", status) == 0
-    assert rows(db)[:3] == before
-    assert len(rows(db)) == 4
-    assert rows(db)[3][0:3] == (JOB, "verify", status)
+    assert rows(db)[:4] == before
+    assert len(rows(db)) == 5
+    assert rows(db)[4][0:3] == (JOB, "verify", status)
     assert run(db, "process-check", "--since", "7d", "--json") == 0
     assert json.loads(capsys.readouterr().out) == {
         "since": "7d", "jobs": [JOB], "missing": [], "absent": [], "no_jobs": False,
@@ -182,7 +185,7 @@ def test_recent_job_keeps_older_steps_but_absence_uses_the_window(db, clock, cap
     assert run(db, "process-check", "--since", "7d", "--json") == 1
     assert json.loads(capsys.readouterr().out) == {
         "since": "7d", "jobs": [JOB], "missing": [],
-        "absent": ["shuin-record", "waybook-warm-start"], "no_jobs": False,
+        "absent": ["shuin-record", "waybook-warm-start", "scorecard"], "no_jobs": False,
     }
 
 
@@ -191,19 +194,16 @@ def test_ten_thousand_rows_finish_in_under_two_seconds(db, clock, capsys, monkey
     try:
         with ledger.tx():
             for n in range(10000):
-                ledger.record_process_run(f"job-{n // 3:04d}", STEPS[n % 3], "ok")
+                ledger.record_process_run(f"job-{n // 4:04d}", STEPS[n % 4], "ok")
     finally:
         ledger.close()
     monkeypatch.setenv("SHUIN_DB", str(db))
     started = time.perf_counter()
-    assert main(["process-check", "--since", "7d", "--json"]) == 1
+    assert main(["process-check", "--since", "7d", "--json"]) == 0
     elapsed = time.perf_counter() - started
     assert json.loads(capsys.readouterr().out) == {
-        "since": "7d", "jobs": [f"job-{n:04d}" for n in range(3334)],
-        "missing": [
-            {"job": "job-3333", "step": "verify"},
-            {"job": "job-3333", "step": "waybook-warm-start"},
-        ],
+        "since": "7d", "jobs": [f"job-{n:04d}" for n in range(2500)],
+        "missing": [],
         "absent": [], "no_jobs": False,
     }
     assert elapsed < 2
