@@ -1,4 +1,5 @@
 import json
+import re
 import socket
 import sqlite3
 import time
@@ -39,6 +40,23 @@ def record(db, job=JOB, steps=STEPS):
 def rows(db):
     with sqlite3.connect(db) as conn:
         return conn.execute("SELECT job_id, step, status, created_at FROM process_runs ORDER BY id").fetchall()
+
+
+def test_schema_allows_exactly_the_process_steps(db, clock):
+    ledger = open_ledger(db)
+    try:
+        sql = ledger.conn.execute(
+            "SELECT sql FROM sqlite_master WHERE type='table' AND name='process_runs'"
+        ).fetchone()[0]
+        step_check = re.search(r"step IN\(([^)]+)\)", sql)
+        assert step_check is not None
+        assert set(re.findall(r"'([^']+)'", step_check.group(1))) == {
+            "shuin-record", "verify", "waybook-warm-start", "scorecard",
+        }
+    finally:
+        ledger.close()
+    assert run(db, "process-ran", "--job", JOB, "--step", "scorecard", "--status", "ok") == 0
+    assert rows(db) == [(JOB, "scorecard", "ok", clock["t"])]
 
 
 def test_four_steps_leave_four_rows_and_pass(db, clock, capsys):
