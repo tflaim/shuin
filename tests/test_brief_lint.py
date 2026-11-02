@@ -12,7 +12,7 @@ MODEL=small-model
 EFFORT=high
 TIMEOUT_MIN=60
 ALLOWED_PATHS="scripts/brief_lint.py tests/test_brief_lint.py"
-TEST_CMD="python -m pytest"
+TEST_CMD="/opt/homebrew/bin/python3.14 -m pytest"
 PROMPT_FILE=prompt.md
 TITLE="Check job briefs"
 """
@@ -167,7 +167,7 @@ def test_spec_is_data(tmp_path, quote):
     spec = "\n# Comment\n  # Another comment\n\n" + "\n".join(
         "export " + line.replace('"', quote) for line in SPEC.splitlines()
     )
-    spec = spec.replace("python -m pytest", f"$(touch {marker}) `touch {marker}`")
+    spec = spec.replace("/opt/homebrew/bin/python3.14 -m pytest", f"$(touch {marker}) `touch {marker}`")
     assert checks(brief(tmp_path, spec)) == []
     assert marker.exists() is False
 
@@ -214,7 +214,7 @@ def test_nested_job_files(tmp_path):
 ])
 def test_globs(tmp_path, allowed, path, expected):
     spec = SPEC.replace("scripts/brief_lint.py tests/test_brief_lint.py", allowed)
-    prompt = "Goal: Check files.\nData shape: Fields.\nChange: Edit " + path + ".\nTests: Report exact counts.\n"
+    prompt = "Goal: Check files.\nData shape: Fields.\nChange: Edit " + path + ".\nTests: Report exact counts.\nALLOWED_PATHS: " + allowed + "\n"
     assert checks(brief(tmp_path, spec, prompt)) == expected
 
 

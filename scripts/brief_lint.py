@@ -27,6 +27,20 @@ ATTRIBUTION = re.compile(
     re.IGNORECASE,
 )
 VENDOR = re.compile(r"\b(?:" + "|".join(map(re.escape, VENDORS)) + r")\b", re.IGNORECASE)
+BARE_PYTHON = re.compile(
+    r"(?:^|&&|\|\||[;|(`])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:exec\s+|env\s+)?"
+    r"(python3?(?:\.\d+)?|pip3?(?:\.\d+)?)(?![\w./-])"
+)
+COMMIT = re.compile(
+    r"\bgit\s+(?:commit|push)\b|\b(?:one|a|single|new)\s+commit\b"
+    r"|\bcommit\s+(?:it|this|them|the|your|all|each|everything|with|as)\b"
+    r"|\bpush\s+(?:it|the|to|your|a)\b",
+    re.IGNORECASE,
+)
+GET_ONLY_ENVIRONMENT = (
+    "colorSchemeContrast", "accessibilityReduceTransparency", "accessibilityReduceMotion",
+    "accessibilityDifferentiateWithoutColor", "accessibilityInvertColors",
+)
 PROHIBITION = re.compile(r"\b(?:do\s+not|don't|never|must\s+not|no)\b", re.IGNORECASE)
 EXTENSIONS = {
     ".py", ".sh", ".md", ".swift", ".ts", ".json", ".txt", ".yaml", ".yml",
@@ -140,6 +154,7 @@ def lint(folder: Path) -> list[Finding]:
         report("missing-key", "TIMEOUT_MIN must be a positive integer at most 240")
 
     allowed = []
+    entries = []
     directories = set(REPO_DIRS)
     for entry in spec.get("ALLOWED_PATHS", "").split():
         path = entry[2:] if entry.startswith("./") else entry
@@ -153,12 +168,22 @@ def lint(folder: Path) -> list[Finding]:
             report("broad-paths", f"ALLOWED_PATHS entry is forbidden or too broad: {entry}")
             continue
         allowed.append(_glob(path))
+        entries.append(entry)
         if "/" in path and not re.search(r"[*?]", path.split("/", 1)[0]):
             directories.add(path.split("/", 1)[0])
 
     title = spec.get("TITLE", "")
     if len(title) > 72 or title.endswith("."):
         report("title", "TITLE must be at most 72 characters and must not end with a period")
+
+    if "BRANCH" in spec:
+        report("branch-key", "spec.env must not set BRANCH; the bridge derives the branch from SLUG")
+    match = BARE_PYTHON.search(spec.get("TEST_CMD", ""))
+    if match:
+        report(
+            "bare-python",
+            f"TEST_CMD runs bare {match.group(1)}; use /opt/homebrew/bin/python3.14 or a venv made from it",
+        )
 
     texts = {"TITLE": title}
     for key in ("PROMPT_FILE", "BODY_FILE"):
@@ -204,6 +229,42 @@ def lint(folder: Path) -> list[Finding]:
         ):
             if not re.search(pattern, prompt, re.IGNORECASE | re.MULTILINE):
                 report("missing-section", f"Prompt must contain {label}")
+    if prompt is not None:
+        for line in prompt.splitlines():
+            for clause in re.split(r"[;.!?]\s+|\b(?:but|however)\b", line, flags=re.IGNORECASE):
+                match = COMMIT.search(clause)
+                if match and not PROHIBITION.search(clause[:match.start()]):
+                    report("commit-instruction", "Prompt tells the job to commit or push; the bridge commits")
+                    break
+            else:
+                continue
+            break
+        listed = set(re.findall(r"[^\s`\"'<>()[\]{},;]+", prompt))
+        listed |= {token.rstrip(".:") for token in listed}
+        missing = [entry for entry in entries if entry not in listed]
+        if missing:
+            report("paths-not-inline", "Prompt must list every ALLOWED_PATHS entry: " + " ".join(missing))
+        everything = prompt + " " + spec.get("ALLOWED_PATHS", "")
+        if "web/vendor/" in everything and not (
+            "web/vendor/manifest.json" in prompt and re.search(r"\bsha-?256\b", prompt, re.IGNORECASE)
+            and re.search(r"\btests?\b", prompt, re.IGNORECASE)
+        ):
+            report(
+                "vendor-manifest",
+                "Brief touches web/vendor/ but does not require a test that every web/vendor/manifest.json"
+                " entry exists with a matching sha256",
+            )
+        if ".swift" in everything:
+            for key in GET_ONLY_ENVIRONMENT:
+                if re.search(r"\.environment\(\s*\\\." + key + r"\b", prompt) and not re.search(
+                    r"\bget-only\b", prompt, re.IGNORECASE
+                ):
+                    report("swift-readonly-env", f"Prompt writes get-only EnvironmentValues.{key}; inject it instead")
+                elif key in prompt and not re.search(r"\binject", prompt, re.IGNORECASE):
+                    report(
+                        "swift-readonly-env",
+                        f"Prompt names get-only EnvironmentValues.{key} but not the injected init or style input tests use",
+                    )
     for source, text in texts.items():
         if _has_attribution(text, prompt=source == "PROMPT_FILE"):
             report("attribution", f"{source} requests or contains forbidden attribution")
