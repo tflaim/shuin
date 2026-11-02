@@ -1,4 +1,12 @@
+import json
+import threading
+import time
+
+import pytest
+
+from shuin.errors import GhProblem
 from shuin.github import (
+    GhClient,
     aggregate_ci,
     aggregate_reviews,
     clean_files,
@@ -8,6 +16,101 @@ from shuin.github import (
     match_required,
     ruleset_applies,
 )
+from shuin.types import PrSnapshot
+
+
+@pytest.fixture
+def pull_responses():
+    sha = "0123456789abcdef0123456789abcdef01234567"
+    payloads = {
+        "repos/o/r/pulls/1": {
+            "node_id": "PR_1",
+            "merged": False,
+            "state": "open",
+            "head": {"ref": "feature", "sha": sha},
+            "base": {"ref": "main"},
+        },
+        "repos/o/r/pulls/1/reviews": [{"user": {"id": 1}, "state": "APPROVED"}],
+        "repos/o/r/pulls/1/files": [{"filename": "shuin/github.py"}],
+        f"repos/o/r/commits/{sha}/check-runs": {
+            "total_count": 1,
+            "check_runs": [{"name": "ci", "head_sha": sha, "status": "completed", "conclusion": "success"}],
+        },
+        f"repos/o/r/commits/{sha}/status": {
+            "statuses": [{"context": "lint", "sha": sha, "state": "success"}],
+        },
+    }
+    return {path: (0, json.dumps(payload), "") for path, payload in payloads.items()}
+
+
+def test_fetch_pull_overlaps_follow_up_reads(pull_responses):
+    barrier = threading.Barrier(4, timeout=2)
+
+    def runner(args):
+        path = args[2].split("?", 1)[0]
+        if path != "repos/o/r/pulls/1":
+            try:
+                barrier.wait()
+            except threading.BrokenBarrierError:
+                return 1, "", "barrier timeout"
+        return pull_responses[path]
+
+    snapshot = GhClient(runner).fetch_pull("o/r", 1)
+    assert snapshot == PrSnapshot(
+        repo="o/r",
+        number=1,
+        node_id="PR_1",
+        branch="feature",
+        base_branch="main",
+        head_sha="0123456789abcdef0123456789abcdef01234567",
+        state="open",
+        review_state="approved",
+        ci_state="passing",
+        files=("shuin/github.py",),
+    )
+
+
+def test_fetch_pull_reads_head_before_follow_ups(pull_responses):
+    events = []
+
+    def runner(args):
+        path = args[2].split("?", 1)[0]
+        events.append(("start", path))
+        response = pull_responses[path]
+        if path == "repos/o/r/pulls/1":
+            events.append(("return", path))
+        return response
+
+    GhClient(runner).fetch_pull("o/r", 1)
+    assert events[:2] == [("start", "repos/o/r/pulls/1"), ("return", "repos/o/r/pulls/1")]
+    assert len(events[2:]) == 4
+    assert {path for event, path in events[2:] if event == "start"} == set(pull_responses) - {"repos/o/r/pulls/1"}
+
+
+@pytest.mark.parametrize("reviews_fail, expected_kind", [(True, "auth"), (False, "infra")])
+def test_fetch_pull_propagates_first_error_in_read_order(pull_responses, reviews_fail, expected_kind):
+    if reviews_fail:
+        pull_responses["repos/o/r/pulls/1/reviews"] = (1, "", "HTTP 401")
+    pull_responses["repos/o/r/commits/0123456789abcdef0123456789abcdef01234567/status"] = (1, "", "HTTP 500")
+
+    def runner(args):
+        return pull_responses[args[2].split("?", 1)[0]]
+
+    with pytest.raises(GhProblem) as exc:
+        GhClient(runner).fetch_pull("o/r", 1)
+    assert exc.value.kind == expected_kind
+
+
+def test_fetch_pull_finishes_in_two_rounds(pull_responses):
+    def runner(args):
+        time.sleep(0.2)
+        return pull_responses[args[2].split("?", 1)[0]]
+
+    start = time.perf_counter()
+    snapshot = GhClient(runner).fetch_pull("o/r", 1)
+    elapsed = time.perf_counter() - start
+    assert snapshot.head_sha == "0123456789abcdef0123456789abcdef01234567"
+    assert elapsed < 0.7
 
 
 def test_head_and_required_checks_parse():
