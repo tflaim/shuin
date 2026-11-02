@@ -1,5 +1,7 @@
 import argparse
+import os
 import re
+import subprocess
 from pathlib import Path
 from typing import TypedDict
 
@@ -31,10 +33,35 @@ BARE_PYTHON = re.compile(
     r"(?:^|&&|\|\||[;|(`])\s*(?:[A-Za-z_][A-Za-z0-9_]*=\S*\s+)*(?:exec\s+|env\s+)?"
     r"(python3?(?:\.\d+)?|pip3?(?:\.\d+)?)(?![\w./-])"
 )
+PIP_INSTALL = re.compile(r"(?:^|[\s/])(?:pip3?(?:\.\d+)?|-m\s+pip)\s+install\b(?P<args>.*)")
+PIP_OPTION_WITH_VALUE = {"-r", "--requirement", "-c", "--constraint", "-t", "--target", "--prefix", "-i", "--index-url"}
+TREE_CLEANUP = re.compile(r"\$\?.*rm\s+-rf\b(?=[^;&|]*\bbuild\b)(?=[^;&|]*egg-info)[^;&|]*.*\bexit\s+\"?\$", re.DOTALL)
+
+
+def _pip_installs_tree(test_cmd: str) -> bool:
+    """pip install of the worktree itself writes build/ and *.egg-info into it."""
+    for segment in re.split(r"&&|\|\||[;|]", test_cmd):
+        match = PIP_INSTALL.search(segment)
+        if not match:
+            continue
+        args = match.group("args").split()
+        skip = False
+        for arg in args:
+            if skip:
+                skip = False
+            elif arg in PIP_OPTION_WITH_VALUE:
+                skip = True
+            elif re.fullmatch(r"\.(?:/)?(?:\[[\w,-]+\])?", arg):
+                return not TREE_CLEANUP.search(test_cmd)
+    return False
+
+
 COMMIT = re.compile(
-    r"\bgit\s+(?:commit|push)\b|\b(?:one|a|single|new)\s+commit\b"
-    r"|\bcommit\s+(?:it|this|them|the|your|all|each|everything|with|as)\b"
-    r"|\bpush\s+(?:it|the|to|your|a)\b",
+    r"^\s*(?:[-*]\s*|\d+[.)]\s*)?(?:(?:then|and|also|please|finally|now|next|first)\s+)*"
+    r"(?:you\s+(?:should|must|need\s+to|can)\s+)?"
+    r"(?:(?:run\s+)?git\s+(?:commit|push)\b|(?:commit|push)\s+(?:it|this|them|the|your|all|each|everything|with|as|to)\b"
+    r"|(?:make|create)\s+(?:one|a|single|new|exactly\s+one)\s+commit\b|(?:one|single|exactly\s+one)\s+commit\b)"
+    r"|\brun\s+git\s+(?:commit|push)\b",
     re.IGNORECASE,
 )
 GET_ONLY_ENVIRONMENT = (
@@ -84,7 +111,8 @@ def _glob(pattern: str) -> re.Pattern:
 
 def _has_attribution(text: str, prompt: bool) -> bool:
     for line in text.splitlines():
-        commit = re.search(r"\bcommit(?:s|ting)?\b", line, re.IGNORECASE)
+        words = re.sub(r"\S*/\S*", " ", line)
+        commit = re.search(r"\bcommit(?:s|ting)?\b", words, re.IGNORECASE)
         for clause in re.split(r"[;.!?]\s+|\b(?:but|however)\b", line, flags=re.IGNORECASE):
             matches = list(ATTRIBUTION.finditer(clause))
             if not prompt or commit:
@@ -92,6 +120,69 @@ def _has_attribution(text: str, prompt: bool) -> bool:
             for match in matches:
                 if not prompt or not PROHIBITION.search(clause[:match.start()]):
                     return True
+    return False
+
+
+BRIDGE_LIB = Path(os.environ.get(
+    "BRIEF_LINT_BRIDGE_LIB", "/workspace/spike-setup/bridge-wiring-fix/taco-live/bridge-lib.sh"))
+BRIDGE_KEYS = ("SLUG", "REPO_URL", "BASE", "MODEL", "EFFORT", "TIMEOUT_MIN",
+               "ALLOWED_PATHS", "TEST_CMD", "PROMPT_FILE", "TITLE", "BODY_FILE")
+PARSE_SCRIPT = (
+    'eval "$1"; shift; BL_ERRS=0; '
+    'bl_verr() { BL_ERRS=$((BL_ERRS + 1)); printf "E%s\\0" "$*"; }; '
+    'bl_parse_spec spec.env; rc=$?; '
+    'for k in "$@"; do v="S_$k"; printf "V%s=%s\\0" "$k" "${!v}"; done; exit $rc'
+)
+
+
+def _bridge_functions(text: str) -> str:
+    """bl_trim and bl_parse_spec, cut from bridge-lib.sh by their definition lines."""
+    found = [re.search(rf"^{name}\(\) \{{\n.*?^\}}\n", text, re.MULTILINE | re.DOTALL)
+             for name in ("bl_trim", "bl_parse_spec")]
+    return "\n".join(match.group(0) for match in found if match) if all(found) else ""
+
+
+def _spec_parse(folder: Path) -> list[str]:
+    """Parse spec.env with the bridge's own bl_parse_spec. It expands nothing."""
+    if not BRIDGE_LIB.is_file():
+        return [f"bridge-lib.sh not found at {BRIDGE_LIB}; set BRIEF_LINT_BRIDGE_LIB"]
+    functions = _bridge_functions(BRIDGE_LIB.read_text(encoding="utf-8"))
+    if not functions:
+        return [f"bl_trim or bl_parse_spec missing from {BRIDGE_LIB}"]
+    try:
+        result = subprocess.run(
+            ["/bin/bash", "--noprofile", "--norc", "-c", PARSE_SCRIPT, "_", functions, *BRIDGE_KEYS],
+            cwd=folder, env={"PATH": "/usr/bin:/bin"}, capture_output=True, text=True, timeout=10,
+        )
+    except subprocess.TimeoutExpired:
+        return ["bl_parse_spec did not finish in 10 seconds"]
+    records = [record for record in result.stdout.split("\0") if record]
+    problems = [record[1:] for record in records if record[0] == "E"]
+    if result.returncode and not problems:
+        problems.append(f"bl_parse_spec exited {result.returncode}")
+    values = dict(record[1:].split("=", 1) for record in records if record[0] == "V")
+    present = {key.strip() for key in re.findall(r"^\s*([^#=\n][^=\n]*)=", (folder / "spec.env").read_text(encoding="utf-8"), re.MULTILINE)}
+    for key in BRIDGE_KEYS:
+        value = values.get(key, "")
+        if key in present and not value:
+            problems.append(f"{key} is empty after bl_parse_spec")
+        if "'\\''" in value:
+            problems.append(f"{key} keeps a literal '\\'' sequence; bl_parse_spec does not unescape it")
+        for quote in "'\"":
+            if (value.startswith(quote) or value.endswith(quote)) and value.count(quote) % 2:
+                problems.append(f"{key} has an unmatched {quote} after bl_parse_spec")
+    return problems
+
+
+def _asks_to_commit(prompt: str) -> bool:
+    for line in prompt.splitlines():
+        for sentence in re.split(r"[;.!?]\s+|\b(?:but|however)\b", line, flags=re.IGNORECASE):
+            start = 0
+            for piece in re.split(r"([,:]\s+)", sentence):
+                match = COMMIT.search(piece)
+                if match and not PROHIBITION.search(sentence[:start + match.start()]):
+                    return True
+                start += len(piece)
     return False
 
 
@@ -122,6 +213,9 @@ def lint(folder: Path) -> list[Finding]:
                 continue
             value = value[1:-1]
         spec[key] = value
+    if (folder / "spec.env").is_file():
+        for problem in _spec_parse(folder):
+            report("spec-parse", problem)
     for key in REQUIRED:
         if not spec.get(key, "").strip():
             report("missing-key", f"{key} is required and must be non-empty")
@@ -185,6 +279,13 @@ def lint(folder: Path) -> list[Finding]:
             f"TEST_CMD runs bare {match.group(1)}; use /opt/homebrew/bin/python3.14 or a venv made from it",
         )
 
+    if _pip_installs_tree(spec.get("TEST_CMD", "")):
+        report(
+            "pip-install-tree",
+            "TEST_CMD runs pip install . in the worktree, which writes build/ and *.egg-info there;"
+            " install from a temp copy",
+        )
+
     texts = {"TITLE": title}
     for key in ("PROMPT_FILE", "BODY_FILE"):
         if key not in spec or (key == "PROMPT_FILE" and not spec[key].strip()):
@@ -230,15 +331,8 @@ def lint(folder: Path) -> list[Finding]:
             if not re.search(pattern, prompt, re.IGNORECASE | re.MULTILINE):
                 report("missing-section", f"Prompt must contain {label}")
     if prompt is not None:
-        for line in prompt.splitlines():
-            for clause in re.split(r"[;.!?]\s+|\b(?:but|however)\b", line, flags=re.IGNORECASE):
-                match = COMMIT.search(clause)
-                if match and not PROHIBITION.search(clause[:match.start()]):
-                    report("commit-instruction", "Prompt tells the job to commit or push; the bridge commits")
-                    break
-            else:
-                continue
-            break
+        if _asks_to_commit(prompt):
+            report("commit-instruction", "Prompt tells the job to commit or push; the bridge commits")
         listed = set(re.findall(r"[^\s`\"'<>()[\]{},;]+", prompt))
         listed |= {token.rstrip(".:") for token in listed}
         missing = [entry for entry in entries if entry not in listed]

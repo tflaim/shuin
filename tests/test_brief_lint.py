@@ -1,8 +1,11 @@
+import os
 import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+
+os.environ["BRIEF_LINT_BRIDGE_LIB"] = str(Path(__file__).parent / "fixtures" / "bridge-lib.sh")
 
 
 SPEC = """SLUG=tflaim/brief-lint
@@ -30,6 +33,11 @@ def brief(tmp_path, spec=SPEC, prompt=PROMPT):
     return tmp_path
 
 
+def rule_checks(folder):
+    """Checks other than spec-parse, which tests/test_brief_lint_lessons.py covers."""
+    return [check for check in checks(folder) if check != "spec-parse"]
+
+
 def checks(folder):
     from scripts.brief_lint import lint
 
@@ -51,7 +59,7 @@ def test_missing_key(tmp_path, key, value):
     lines = [line for line in SPEC.splitlines() if not line.startswith(key + "=")]
     if value is not None:
         lines.append(f"{key}={value}")
-    assert checks(brief(tmp_path, "\n".join(lines))) == ["missing-key"]
+    assert rule_checks(brief(tmp_path, "\n".join(lines))) == ["missing-key"]
 
 
 @pytest.mark.parametrize("slug", ["other/job", "tflaim/", "tflaim/a/b", "tflaim/a b", "tflaim/a$"])
@@ -136,7 +144,7 @@ def test_attribution(tmp_path, text, source):
 ])
 def test_invalid_field(tmp_path, key, value):
     lines = [line for line in SPEC.splitlines() if not line.startswith(key + "=")]
-    assert checks(brief(tmp_path, "\n".join(lines) + f"\n{key}={value}\n")) == ["missing-key"]
+    assert rule_checks(brief(tmp_path, "\n".join(lines) + f"\n{key}={value}\n")) == ["missing-key"]
 
 
 @pytest.mark.parametrize("key,value,expected", [
@@ -168,13 +176,14 @@ def test_spec_is_data(tmp_path, quote):
         "export " + line.replace('"', quote) for line in SPEC.splitlines()
     )
     spec = spec.replace("/opt/homebrew/bin/python3.14 -m pytest", f"$(touch {marker}) `touch {marker}`")
-    assert checks(brief(tmp_path, spec)) == []
+    assert rule_checks(brief(tmp_path, spec)) == []
     assert marker.exists() is False
+    assert "spec-parse" in checks(tmp_path)
 
 
 @pytest.mark.parametrize("line", ["invalid line", "export NO_EQUALS", "TITLE='unclosed"])
 def test_malformed_spec(tmp_path, line):
-    assert checks(brief(tmp_path, SPEC + line + "\n")) == ["missing-key"]
+    assert rule_checks(brief(tmp_path, SPEC + line + "\n")) == ["missing-key"]
 
 
 def test_missing_spec(tmp_path):
@@ -188,7 +197,7 @@ def test_job_files_are_confined(tmp_path, key, filename):
     (tmp_path.parent / "outside.md").write_text(PROMPT, encoding="utf-8")
     (tmp_path / "escape.md").symlink_to(tmp_path.parent / "outside.md")
     spec = SPEC.replace("PROMPT_FILE=prompt.md", f"PROMPT_FILE={filename}") if key == "PROMPT_FILE" else SPEC + f"BODY_FILE={filename}\n"
-    assert checks(brief(tmp_path, spec)) == ["missing-key"]
+    assert rule_checks(brief(tmp_path, spec)) == ["missing-key"]
 
 
 def test_nested_job_files(tmp_path):
