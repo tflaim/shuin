@@ -29,7 +29,7 @@ def connect(path: Path | str) -> sqlite3.Connection:
 
 
 # schema.sql is the latest shape. These steps bring an already-created ledger forward.
-LATEST_VERSION = 12
+LATEST_VERSION = 13
 
 _EVIDENCE_VIEW = """CREATE VIEW evidence_v AS
   SELECT e.*,
@@ -112,6 +112,9 @@ def migrate(conn: sqlite3.Connection) -> None:
             if current < 12:
                 _migrate_process_runs(conn)
                 _record_version(conn, 12)
+            if current < 13:
+                _migrate_process_steps(conn)
+                _record_version(conn, 13)
             bad = conn.execute("PRAGMA foreign_key_check").fetchall()
             if bad:
                 raise sqlite3.IntegrityError("foreign key check failed")
@@ -285,6 +288,8 @@ def _version_markers(conn: sqlite3.Connection, version: int) -> list[bool]:
         return [_table_exists(conn, "trust_events")]
     if version == 12:
         return [_table_exists(conn, "process_runs")]
+    if version == 13:
+        return ["'scorecard'" in _object_sql(conn, "process_runs")]
     raise AssertionError(version)
 
 
@@ -338,12 +343,35 @@ def _migrate_process_runs(conn: sqlite3.Connection) -> None:
         """CREATE TABLE IF NOT EXISTS process_runs(
              id INTEGER PRIMARY KEY,
              job_id TEXT NOT NULL,
-             step TEXT NOT NULL CHECK(step IN('waybook-warm-start','verify','shuin-record')),
+             step TEXT NOT NULL CHECK(step IN('waybook-warm-start','verify','shuin-record','scorecard')),
              status TEXT NOT NULL CHECK(status IN('ok','missing','error','not-run','passed','failed','timeout','none')),
              created_at INTEGER NOT NULL
            )"""
     )
     conn.execute("CREATE INDEX IF NOT EXISTS process_runs_by_time ON process_runs(created_at)")
+
+
+def _migrate_process_steps(conn: sqlite3.Connection) -> None:
+    """process_runs.step is a CHECK constraint, so existing ledgers need a table rebuild."""
+    row = conn.execute("SELECT sql FROM sqlite_master WHERE type='table' AND name='process_runs'").fetchone()
+    if row is None or "'scorecard'" in (row["sql"] or ""):
+        return
+    conn.execute(
+        """CREATE TABLE process_runs_new(
+             id INTEGER PRIMARY KEY,
+             job_id TEXT NOT NULL,
+             step TEXT NOT NULL CHECK(step IN('waybook-warm-start','verify','shuin-record','scorecard')),
+             status TEXT NOT NULL CHECK(status IN('ok','missing','error','not-run','passed','failed','timeout','none')),
+             created_at INTEGER NOT NULL
+           )"""
+    )
+    conn.execute(
+        """INSERT INTO process_runs_new(id, job_id, step, status, created_at)
+           SELECT id, job_id, step, status, created_at FROM process_runs"""
+    )
+    conn.execute("DROP TABLE process_runs")
+    conn.execute("ALTER TABLE process_runs_new RENAME TO process_runs")
+    conn.execute("CREATE INDEX process_runs_by_time ON process_runs(created_at)")
 
 
 def _migrate_trust_events(conn: sqlite3.Connection) -> None:

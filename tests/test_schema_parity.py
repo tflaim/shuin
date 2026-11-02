@@ -151,7 +151,7 @@ def test_v10_ledger_gains_empty_trust_events(tmp_path):
 
     upgraded = open_ledger(path)
     try:
-        assert upgraded.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 12
+        assert upgraded.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 13
         assert upgraded.conn.execute("SELECT * FROM trust_events").fetchall() == []
     finally:
         upgraded.close()
@@ -177,7 +177,7 @@ def test_v11_ledger_gains_empty_process_runs(tmp_path):
 
     upgraded = open_ledger(path)
     try:
-        assert upgraded.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 12
+        assert upgraded.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 13
         assert upgraded.conn.execute("SELECT * FROM process_runs").fetchall() == []
     finally:
         upgraded.close()
