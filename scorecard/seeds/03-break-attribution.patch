@@ -1,0 +1,11 @@
+# Expected KPI: hooks.failed
+# Suppress successful hit reports.
+--- a/githooks/attribution.sh
++++ b/githooks/attribution.sh
+@@ -156,5 +156,5 @@
+   rm -f "$_ai_in_f" "$_ai_norm_f"
+   if [ "$_ai_gr" -eq 0 ] || [ "$_ai_gr" -eq 1 ]; then
+-    return "$_ai_gr"
++    return 1
+   fi
+   return 2

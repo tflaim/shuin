@@ -159,9 +159,62 @@ def test_existing_ledger_accepts_done_and_tried_failed(tmp_path):
         ).fetchone()["n"]
         assert tried_rows == 1
         versions = {row["version"] for row in ledger.conn.execute("SELECT version FROM schema_migrations")}
-        assert versions == {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12}
+        assert versions == {2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13}
     finally:
         ledger.close()
+
+
+def test_v12_ledger_accepts_scorecard_step(tmp_path, clock):
+    path = tmp_path / "ledger.db"
+    ledger = open_ledger(path)
+    ledger.close()
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute("DROP TABLE process_runs")
+        conn.execute(
+            """CREATE TABLE process_runs(
+                 id INTEGER PRIMARY KEY,
+                 job_id TEXT NOT NULL,
+                 step TEXT NOT NULL CHECK(step IN('waybook-warm-start','verify','shuin-record')),
+                 status TEXT NOT NULL CHECK(status IN('ok','missing','error','not-run','passed','failed','timeout','none')),
+                 created_at INTEGER NOT NULL
+               )"""
+        )
+        conn.execute("CREATE INDEX process_runs_by_time ON process_runs(created_at)")
+        conn.execute("INSERT INTO process_runs VALUES (1, 'job-a', 'verify', 'passed', 100)")
+        conn.execute("DELETE FROM schema_migrations")
+        conn.execute("INSERT INTO schema_migrations(version, applied_at) VALUES (12, 1)")
+        conn.commit()
+        with pytest.raises(sqlite3.IntegrityError):
+            conn.execute("INSERT INTO process_runs VALUES (2, 'job-a', 'scorecard', 'ok', 101)")
+    finally:
+        conn.close()
+
+    ledger = open_ledger(path, clock=lambda: clock["t"])
+    try:
+        assert ledger.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 13
+        query = "SELECT id, job_id, step, status, created_at FROM process_runs ORDER BY id"
+        assert [tuple(row) for row in ledger.conn.execute(query)] == [(1, "job-a", "verify", "passed", 100)]
+        ledger.record_process_run("job-a", "scorecard", "ok")
+        assert [tuple(row) for row in ledger.conn.execute(query)] == [
+            (1, "job-a", "verify", "passed", 100),
+            (2, "job-a", "scorecard", "ok", clock["t"]),
+        ]
+        indexes = {
+            row["name"] for row in ledger.conn.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' AND tbl_name='process_runs'"
+            )
+        }
+        assert "process_runs_by_time" in indexes
+    finally:
+        ledger.close()
+
+    again = open_ledger(path)
+    try:
+        assert again.conn.execute("SELECT MAX(version) FROM schema_migrations").fetchone()[0] == 13
+        assert again.conn.execute("SELECT COUNT(*) FROM process_runs").fetchone()[0] == 2
+    finally:
+        again.close()
 
 
 def _table_counts(conn: sqlite3.Connection) -> dict[str, int]:

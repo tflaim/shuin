@@ -80,7 +80,7 @@ _REVIEWS = {"approved", "changes_requested", "commented", "dismissed"}
 _CI = {"passing", "failing", "pending", "none"}
 UPDATE_KINDS = ("progress", "question", "handoff", "note", "done", "tried-failed")
 TRUST_KINDS = ("merged_clean", "merged_edited", "reverted", "reworked")
-PROCESS_STEPS = ("shuin-record", "verify", "waybook-warm-start")
+PROCESS_STEPS = ("shuin-record", "verify", "waybook-warm-start", "scorecard")
 PROCESS_STATUSES = ("ok", "missing", "error", "not-run", "passed", "failed", "timeout", "none")
 
 

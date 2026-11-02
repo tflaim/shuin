@@ -1,0 +1,22 @@
+# Expected KPI: counts.passed
+# Delete one test function and its cases.
+--- a/tests/test_pr_class.py
++++ b/tests/test_pr_class.py
+@@ -19,17 +19,6 @@
+     assert classify_pr(files, 100, 100) == "docs"
+ 
+ 
+-@pytest.mark.parametrize("path", [
+-    "tests/test_x.py",
+-    "Tests/Example.swift",
+-    "pkg/test_x.py",
+-    "pkg/x_test.py",
+-    "pkg/ExampleTests.swift",
+-])
+-def test_test_only(path):
+-    from shuin.pr_class import classify_pr
+-
+-    assert classify_pr([path], 100, 100) == "test_only"
+ 
+ 
+ @pytest.mark.parametrize("files, additions, deletions", [

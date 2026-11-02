@@ -1,0 +1,13 @@
+# Expected KPI: counts.failed
+# Flip one expected PR class.
+--- a/tests/test_pr_class.py
++++ b/tests/test_pr_class.py
+@@ -16,7 +16,7 @@
+ def test_docs(files):
+     from shuin.pr_class import classify_pr
+ 
+-    assert classify_pr(files, 100, 100) == "docs"
++    assert classify_pr(files, 100, 100) == "other"
+ 
+ 
+ @pytest.mark.parametrize("path", [

@@ -1,0 +1,41 @@
+schema = 1
+id = "shuin"
+repo = "tflaim/shuin"
+
+[[kpi]]
+id = "counts.passed"
+unit = "count"
+better = "higher"
+command = "@counts"
+samples = 1
+tolerance_pct = 0
+gate = "report"
+
+[[kpi]]
+id = "counts.failed"
+unit = "count"
+better = "lower"
+command = "@counts"
+samples = 1
+tolerance_pct = 0
+budget = 0
+gate = "report"
+
+[[kpi]]
+id = "hooks.passed"
+unit = "count"
+better = "higher"
+command = "sh githooks/test.sh | awk '/^githooks: [0-9]+ passed, [0-9]+ failed$/ {print \"kpi hooks.passed=\" $2; print \"kpi hooks.failed=\" $4}'"
+samples = 1
+tolerance_pct = 0
+gate = "report"
+
+[[kpi]]
+id = "hooks.failed"
+unit = "count"
+better = "lower"
+command = "sh githooks/test.sh | awk '/^githooks: [0-9]+ passed, [0-9]+ failed$/ {print \"kpi hooks.passed=\" $2; print \"kpi hooks.failed=\" $4}'"
+samples = 1
+tolerance_pct = 0
+budget = 0
+gate = "report"
