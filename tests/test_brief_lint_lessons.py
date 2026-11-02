@@ -12,19 +12,21 @@ NAMED = "/opt/homebrew/bin/python3.14 -m pytest"
     "pip install -q pytest && /opt/homebrew/bin/python3.14 -m pytest",
     "cd web && python3 -m pytest",
     "PYTHONDONTWRITEBYTECODE=1 python -m pytest",
-    "true; pip3 install .",
+    "true; pip3 install pytest",
 ])
 def test_bare_python_rejected(tmp_path, cmd):
     assert checks(brief(tmp_path, SPEC.replace(NAMED, cmd))) == ["bare-python"]
 
 
 @pytest.mark.parametrize("cmd", [
-    "V=$(mktemp -d)/venv && /opt/homebrew/bin/python3.14 -m venv $V && $V/bin/pip install -q pytest . && $V/bin/python -m pytest -q",
-    "$V/bin/python -m pip install -q .",
+    "V=$(mktemp -d)/venv && /opt/homebrew/bin/python3.14 -m venv $V && $V/bin/pip install -q pytest $d/src && $V/bin/python -m pytest -q",
+    "$V/bin/python -m pip install -q $d/src",
     "sh githooks/test.sh",
 ])
 def test_named_interpreter_passes(tmp_path, cmd):
-    assert checks(brief(tmp_path, SPEC.replace(NAMED, cmd))) == []
+    # Single quotes so `. spec.env` does not expand $(...) or $V.
+    spec = SPEC.replace(f'"{NAMED}"', f"'{cmd}'")
+    assert checks(brief(tmp_path, spec)) == []
 
 
 @pytest.mark.parametrize("line", [
@@ -32,6 +34,12 @@ def test_named_interpreter_passes(tmp_path, cmd):
     "Then git commit -m fix.",
     "Commit your work when tests pass.",
     "Push to the branch.",
+    "Commit your changes.",
+    "When tests pass, run git commit with the title.",
+    "Make one commit.",
+    "Push the branch.",
+    "1. Then commit it.",
+    "- You should push to origin.",
     "No AI attribution anywhere. One commit, authored and committed by Thomas Flaim, no trailers.",
 ])
 def test_commit_instruction_rejected(tmp_path, line):
@@ -42,6 +50,12 @@ def test_commit_instruction_rejected(tmp_path, line):
     "Do not commit or push; the bridge commits.",
     "Never run git commit.",
     "Leave the working tree uncommitted.",
+    "- fail_revert: a commit on the default branch whose message reverts another.",
+    "The bridge commits; the result must be authored by Thomas Flaim with no trailers.",
+    "Read the commit message and the push event payload.",
+    "Do not commit, and do not push the branch.",
+    "A new commit appears on main after merge.",
+    "Never run git commit, git push or any branch command.",
 ])
 def test_commit_prohibition_passes(tmp_path, line):
     assert checks(brief(tmp_path, prompt=PROMPT + line + "\n")) == []
@@ -58,7 +72,8 @@ def test_allowed_paths_must_be_inline(tmp_path):
 
 
 def test_branch_key_rejected(tmp_path):
-    assert checks(brief(tmp_path, SPEC + "BRANCH=tflaim/other\n")) == ["branch-key"]
+    # The bridge parser also rejects BRANCH as an unknown key.
+    assert sorted(checks(brief(tmp_path, SPEC + "BRANCH=tflaim/other\n"))) == ["branch-key", "spec-parse"]
 
 
 VENDOR_SPEC = SPEC.replace("tests/test_brief_lint.py\"", "tests/test_brief_lint.py web/vendor/rough.js\"")
@@ -114,3 +129,93 @@ def test_swift_quoting_the_failure_passes(tmp_path):
         " Inject contrast through the init instead.\n"
     )
     assert checks(brief(tmp_path, SWIFT_SPEC, prompt)) == []
+
+ESC = "'\\''"
+GOOD_PARSE = [
+    "TITLE=Fail briefs that do not parse",
+    "TEST_CMD=V=$(mktemp -d)/venv && /opt/homebrew/bin/python3.14 -m venv $V && $V/bin/python -m pytest",
+    "TEST_CMD=node -e 'console.log(1)'",
+    "TITLE='Fail briefs that do not parse'",
+    'TITLE="Fail briefs that do not parse"',
+]
+BAD_PARSE = [
+    ("TEST_CMD='node -e " + ESC + "console.log(1)" + ESC + "'", "literal"),
+    ("TITLE='unclosed", "unmatched"),
+    ('TITLE=unclosed"', "unmatched"),
+    ("NAME=x", "unknown key"),
+    ("export TITLE=x", "unknown key"),
+    ("BODY_FILE=", "empty"),
+]
+
+
+def _with_line(line):
+    key = line.split("=", 1)[0]
+    kept = [old for old in SPEC.splitlines() if not old.startswith(key + "=")]
+    return "\n".join(kept + [line]) + "\n"
+
+
+def _parse_messages(tmp_path, spec):
+    from scripts.brief_lint import lint
+
+    return [f["message"] for f in lint(brief(tmp_path, spec)) if f["check"] == "spec-parse"]
+
+
+@pytest.mark.parametrize("line", GOOD_PARSE)
+def test_spec_parse_clean(tmp_path, line):
+    assert "spec-parse" not in checks(brief(tmp_path, _with_line(line)))
+
+
+@pytest.mark.parametrize("line,words", BAD_PARSE)
+def test_spec_parse_rejected(tmp_path, line, words):
+    assert any(words in message for message in _parse_messages(tmp_path, _with_line(line)))
+
+
+def test_spec_parse_duplicate_key(tmp_path):
+    messages = _parse_messages(tmp_path, SPEC + "TITLE=Again\n")
+    assert any("duplicate key TITLE" in message for message in messages)
+
+
+def test_spec_parse_runs_nothing(tmp_path):
+    marker = tmp_path / "ran"
+    spec = _with_line(f"TEST_CMD=$(touch {marker}); `touch {marker}`; touch {marker}")
+    assert "spec-parse" not in checks(brief(tmp_path, spec))
+    assert marker.exists() is False
+
+
+def test_spec_parse_missing_bridge_lib_is_an_error(tmp_path, monkeypatch):
+    import scripts.brief_lint as brief_lint
+
+    monkeypatch.setattr(brief_lint, "BRIDGE_LIB", tmp_path / "absent.sh")
+    assert any("bridge-lib.sh not found" in message for message in _parse_messages(tmp_path, SPEC))
+
+def test_commit_inside_a_path_is_not_a_commit_line(tmp_path):
+    prompt = PROMPT + "The diff is staged at /Users/taco/codex-bridge/briefs/brief-lint-commit-narrow/staged/x.patch.\n"
+    assert "attribution" not in checks(brief(tmp_path, prompt=prompt))
+
+
+TEMP_COPY = (
+    "d=$(mktemp -d) && cp -R . $d/src && rm -rf $d/src/.git && /opt/homebrew/bin/python3.14 -m venv $d/v"
+    " && $d/v/bin/pip install -q pytest $d/src && env PYTHONDONTWRITEBYTECODE=1 $d/v/bin/python -m pytest -q"
+    " -p no:cacheprovider"
+)
+
+
+@pytest.mark.parametrize("cmd", [
+    "V=$(mktemp -d)/venv && /opt/homebrew/bin/python3.14 -m venv $V && $V/bin/pip install -q pytest . && $V/bin/python -m pytest -q",
+    "$V/bin/pip install -e . && $V/bin/python -m pytest",
+    "$V/bin/pip install ./ && $V/bin/python -m pytest",
+    "$V/bin/python -m pip install -q .[dev] && $V/bin/python -m pytest",
+    "$V/bin/pip install . && $V/bin/python -m pytest; rm -rf build",
+])
+def test_pip_install_tree_rejected(tmp_path, cmd):
+    assert "pip-install-tree" in checks(brief(tmp_path, _with_line("TEST_CMD=" + cmd)))
+
+
+@pytest.mark.parametrize("cmd", [
+    TEMP_COPY,
+    "$V/bin/pip install . && $V/bin/python -m pytest; s=$?; rm -rf build *.egg-info; exit $s",
+    "$V/bin/pip install -q -r requirements.txt && $V/bin/python -m pytest",
+    "$V/bin/pip install -q pytest && $V/bin/python -m pytest ./tests",
+])
+def test_pip_install_tree_passes(tmp_path, cmd):
+    assert "pip-install-tree" not in checks(brief(tmp_path, _with_line("TEST_CMD=" + cmd)))
