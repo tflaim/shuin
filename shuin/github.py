@@ -10,6 +10,7 @@ fails closed.
 import json
 import subprocess
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 
 from shuin.errors import GhProblem
 from shuin.seal import Freshness, fresh
@@ -147,10 +148,15 @@ class GhClient:
         head = head_from_pr(pr)
         if head.error or not head.head_sha:
             raise GhProblem(head.error or "infra")
-        reviews = self.api_collect(f"repos/{repo}/pulls/{number}/reviews")
-        files_payload = self.api_collect(f"repos/{repo}/pulls/{number}/files")
-        runs = self.api_collect(f"repos/{repo}/commits/{head.head_sha}/check-runs")
-        status = self.api(f"repos/{repo}/commits/{head.head_sha}/status")
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            reviews_future = executor.submit(self.api_collect, f"repos/{repo}/pulls/{number}/reviews")
+            files_future = executor.submit(self.api_collect, f"repos/{repo}/pulls/{number}/files")
+            runs_future = executor.submit(self.api_collect, f"repos/{repo}/commits/{head.head_sha}/check-runs")
+            status_future = executor.submit(self.api, f"repos/{repo}/commits/{head.head_sha}/status")
+            reviews = reviews_future.result()
+            files_payload = files_future.result()
+            runs = runs_future.result()
+            status = status_future.result()
         statuses = status.get("statuses") if isinstance(status, dict) else []
         files = clean_files(item.get("filename") for item in files_payload if isinstance(item, dict))
         if files is None:
